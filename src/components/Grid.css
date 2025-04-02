@@ -1,0 +1,58 @@
+.grid {
+    display: inline-block;
+    border: 2px solid #333;
+    background: #111;
+    margin: 20px 0;
+  }
+  
+  .row {
+    display: flex;
+  }
+  
+  .cell {
+    width: 40px;
+    height: 40px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
+  }
+  
+  .color-1 { /* I-block - Cyan */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-image: url('../assets/blue_square.svg');
+  }
+  
+  .color-2 { /* J-block - Blue */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-image: url('../assets/dark_blue_square.svg');
+  }
+  
+  .color-3 { /* L-block - Orange */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-image: url('../assets/orange_square.svg');
+  }
+  
+  .color-4 { /* O-block - Yellow */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-image: url('../assets/yellow_square.svg');
+  }
+  
+  .color-5 { /* S-block - Green */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-image: url('../assets/green_square.svg');
+  }
+  
+  .color-6 { /* T-block - Purple */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-image: url('../assets/magenta_square.svg');
+  }
+  
+  .color-7 { /* Z-block - Red */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-image: url('../assets/red_square.svg');
+  }
+  
+  .color-9 { /* Previsualisation */
+    background-color: #000000;
+    border: 1px solid rgb(255, 255, 255); 
+  }
+  
