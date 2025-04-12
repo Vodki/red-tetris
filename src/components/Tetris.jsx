@@ -32,7 +32,7 @@ const Tetris = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('api/leaderboard');
+        const response = await fetch('../../api/leaderboard');
   
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);

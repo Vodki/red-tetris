@@ -7,13 +7,15 @@ const COLS = 10;
 const INITIAL_SPEED = 500;
 
 export class GameEngine extends EventEmitter{
-  constructor(socket) {
+  constructor(socket, username) {
     super();
     this.reset()
     this.socket = socket;
+    this.socketId = socket.id
     this.intervalId = null;
-    this.username = '';
+    this.username = username;
     this.isRunning = false;
+    this.room = null;
 
     this.initializeSocketHandlers();
   }
@@ -287,3 +289,4 @@ export class GameEngine extends EventEmitter{
     });
   }
 }
+
