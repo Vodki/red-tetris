@@ -7,15 +7,16 @@ const COLS = 10;
 const INITIAL_SPEED = 500;
 
 export class GameEngine extends EventEmitter{
-  constructor(socket, username) {
+  constructor(socket, isHost) {
     super();
     this.reset()
     this.socket = socket;
     this.socketId = socket.id
     this.intervalId = null;
-    this.username = username;
+    this.username = null;
     this.isRunning = false;
     this.room = null;
+    this.isHost = isHost
 
     this.initializeSocketHandlers();
   }

@@ -26,7 +26,7 @@ export const SocketProvider = ({ children }) => {
     });
     
     ws.on('connect', () => {
-      console.log('Connected to WS server');
+      console.log(`Connected to WS server with ID : ${ws.id}`);
       ws.emit('new-game');
     });
     
@@ -67,6 +67,10 @@ export const SocketProvider = ({ children }) => {
         listeners.delete(correlationId);
       }
     });
+
+    ws.on('roomUpdate', (data) => {
+      console.log('roomUpdate:', data)
+    })
 
 
     ws.onAny((message) => {

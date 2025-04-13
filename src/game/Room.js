@@ -1,8 +1,30 @@
 export class Room {
-  constructor(name, master) {
+  constructor(name, host) {
     this.name = name;
     this.engines = new Map();
-    this.master = master
+    this.host = host
+    this.isRunning = false
+  }
+
+  serializePlayers() {
+    const players = [];
+    this.engines.forEach((engine) => {
+      players.push({
+        username: engine.username,
+        socketId: engine.socketId
+      });
+    });
+
+    return {
+      host: this.host,
+      players: players
+    };
+  }
+
+  startGames() {
+    this.engines.forEach((engine) => {
+      engine.start()
+    })
   }
 }
 
