@@ -34,7 +34,7 @@ export const SocketProvider = ({ children }) => {
     
     ws.on('GameUpdate', (message) => {
       try {
-        console.log(message)
+        //console.log(message)
         setGrid(message.grid)
         setScore(message.score)
         setGameOn(!message.gameOn)
@@ -83,6 +83,9 @@ export const SocketProvider = ({ children }) => {
       });
     })
 
+    ws.on('GameShadow', (data) => {
+      console.log('GameShadow:', data)
+    })
 
     ws.onAny((message) => {
       //console.log('onAny:', message)

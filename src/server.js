@@ -46,6 +46,7 @@ app.prepare().then(() => {
           const room = new Room(data.roomName, socket.id)
           console.log('After room creation')
           const engine = new GameEngine(socket, true, room.tetrominos)
+          engine.room = room
           console.log('After engine creation')
           engine.username = players.get(socket.id)
           room.engines.set(engine.socketId, engine)
@@ -89,6 +90,7 @@ app.prepare().then(() => {
         const engine = new GameEngine(socket, false, room.tetrominos)
         engine.username = players.get(socket.id)
         room.engines.set(socket.id, engine)
+        engine.room = room
         socket.join(data.roomName)
         socket.emit('joinRoomResponse', {
           correlationId: data.correlationId,

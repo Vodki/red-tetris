@@ -103,6 +103,8 @@ export class GameEngine extends EventEmitter{
         this.board.fillBoard(x, y, this.current.color);
       }
     }
+
+    this.sendGameShadow();
   }
 
   spawnNewTetromino() {
@@ -246,6 +248,19 @@ export class GameEngine extends EventEmitter{
     };
 
     this.socket.emit('GameUpdate', state);
+  }
+
+  sendGameShadow() {
+    const state = {
+      grid: this.getVisualGrid(),
+      score: this.score,
+      level: this.level,
+      nextPiece: this.next,
+      gameOver: this.gameOver,
+      socketId: this.socketId,
+    };
+
+    this.socket.to(this.room.name).emit('GameShadow', state);
   }
 
   getVisualGrid() {
