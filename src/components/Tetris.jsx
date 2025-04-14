@@ -10,10 +10,11 @@ import GameStats from "./GameStats";
 import "./GameStats.css";
 import Grid from "./Grid";
 import { useRouter } from "next/router";
+import { Toaster } from "sonner";
 
 const Tetris = ({ room, username }) => {
 	const defaultGrid = createEmptyGrid();
-	const { grid, sendMessage, score, level, gameOn, host, players } =
+	const { grid, sendMessage, score, level, gameOn, host, players, socket } =
 		useSocket();
 	const [leaderboard, setLeaderboard] = useState([]);
 
@@ -94,6 +95,7 @@ const Tetris = ({ room, username }) => {
 				columnGap: "3rem",
 			}}
 		>
+			<Toaster position="bottom-right" richColors/>
 			<div className="flex flex-col">
 				<Leaderboard entries={leaderboard} />
 				<Button
@@ -107,7 +109,7 @@ const Tetris = ({ room, username }) => {
 			<Grid grid={currentGrid} isOponent={false} />
 			<div className="grid-rows-1 gap-4 items-center">
 				{players
-					?.filter((player) => player.socketId !== host)
+					?.filter((player) => player.socketId !== socket.id)
 					.map((player, index) => (
 						<div className="row-span-1 flex flex-col items-center" key={index}>
               <h4>{player.username}</h4>

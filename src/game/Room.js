@@ -1,9 +1,14 @@
+import { newRandomTetromino } from "./Tetromino.js";
+
 export class Room {
   constructor(name, host) {
     this.name = name;
     this.engines = new Map();
     this.host = host
     this.isRunning = false
+    this.tetrominos = [];
+    this.tetrominos.push(newRandomTetromino());
+    this.tetrominos.push(newRandomTetromino());
   }
 
   serializePlayers() {

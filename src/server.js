@@ -34,6 +34,7 @@ app.prepare().then(() => {
 
     socket.on('newRoom', async (data) => {
       try {
+        console.log('newRoom data : ', data)
         const result = await roomExists(io, data.roomName)
 
         socket.emit('newRoomResponse', {
@@ -43,15 +44,18 @@ app.prepare().then(() => {
         if (result == false) {
           console.log('Socket Id in room creation:', socket.id)
           const room = new Room(data.roomName, socket.id)
-          const engine = new GameEngine(socket, true)
+          console.log('After room creation')
+          const engine = new GameEngine(socket, true, room.tetrominos)
+          console.log('After engine creation')
           engine.username = players.get(socket.id)
           room.engines.set(engine.socketId, engine)
           rooms.set(room.name, room)
+          console.log('rooms after set', rooms)
           socket.join(data.roomName)
           io.to(data.roomName).emit('roomUpdate', room.serializePlayers())
         }
       } catch (error) {
-        socket.emit('Error', {
+        socket.emit('sendError', {
           correlationId: data.correlationId,
           error: error.message
         });
@@ -64,7 +68,7 @@ app.prepare().then(() => {
       console.log('start data :', data)
       const room = rooms.get(data)
       if (!room || !room.host) {
-        socket.emit('Error', 'Room not found')
+        socket.emit('sendError', 'Room not found')
         return;
       }
       if (room.host != socket.id) {
@@ -82,7 +86,7 @@ app.prepare().then(() => {
         socket.emit('Error', `Room ${data.roomName} doesn't exist`)
       } else {
         const room = rooms.get(data.roomName)
-        const engine = new GameEngine(socket, false)
+        const engine = new GameEngine(socket, false, room.tetrominos)
         engine.username = players.get(socket.id)
         room.engines.set(socket.id, engine)
         socket.join(data.roomName)
@@ -103,19 +107,6 @@ app.prepare().then(() => {
   })
   
   });
-
-  io.on('newSession', (name) => {
-
-  })
-
-  io.on('new-game', () => {
-    engine.newGame();
-    console.log('NEW GAME RECU')
-  });
-
-  io.on('start', () => {
-    console.log('START RECEIVED')
-  })
 
   httpServer
     .once("error", (err) => {

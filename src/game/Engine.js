@@ -7,8 +7,9 @@ const COLS = 10;
 const INITIAL_SPEED = 500;
 
 export class GameEngine extends EventEmitter{
-  constructor(socket, isHost) {
+  constructor(socket, isHost, tetrominos) {
     super();
+    this.tetrominos = tetrominos
     this.reset()
     this.socket = socket;
     this.socketId = socket.id
@@ -52,12 +53,12 @@ export class GameEngine extends EventEmitter{
 
   reset() {
     this.board = new Board();
-    this.current = newRandomTetromino();
-    this.next = newRandomTetromino();
+    this.current = this.tetrominos[0].clone();
     this.gameOver = false;
     this.score = 0;
     this.level = 1;
     this.clearedLines = 0;
+    this.pieceNb = 0;
   }
 
   calculateScore(lines) {
@@ -105,8 +106,11 @@ export class GameEngine extends EventEmitter{
   }
 
   spawnNewTetromino() {
-    this.current = this.next;
-    this.next = newRandomTetromino();
+    if (this.pieceNb == this.tetrominos.length - 1) {
+      this.tetrominos.push(newRandomTetromino());
+    }
+    this.pieceNb++;
+    this.current = this.tetrominos[this.pieceNb].clone();
     
     if (!this.isValidPosition(this.current)) {
       this.gameOver = true;

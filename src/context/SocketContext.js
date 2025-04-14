@@ -76,7 +76,8 @@ export const SocketProvider = ({ children }) => {
       setPlayers(data.players);
     })
 
-    ws.on('Error', (data) => {
+    ws.on('sendError', (data) => {
+      console.log("In sendError")
       toast("Error", {
         description: data
       });
@@ -84,7 +85,7 @@ export const SocketProvider = ({ children }) => {
 
 
     ws.onAny((message) => {
-      console.log('onAny:', message)
+      //console.log('onAny:', message)
     })
 
     setSocket(ws)
@@ -129,13 +130,6 @@ export const SocketProvider = ({ children }) => {
       host,
       players
     }}>
-      <Toaster
-        position="bottom-right"
-        richColors
-        toastOptions={{
-            className: 'text-lg'
-        }}
-      />
       {children}
     </SocketContext.Provider>
   );
