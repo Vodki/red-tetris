@@ -6,6 +6,12 @@ import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useSocket } from "@/context/SocketContext";
 import { useRouter } from "next/navigation";
+import {
+	uniqueNamesGenerator,
+	adjectives,
+	colors,
+	animals,
+} from "unique-names-generator";
 
 export default function Home() {
 	const { sendMessage, sendWithPromise } = useSocket();
@@ -59,11 +65,25 @@ export default function Home() {
 		}
 	};
 
+	const handleGeneratePseudo = () => {
+		const generatedName =
+			uniqueNamesGenerator({
+				dictionaries: [adjectives, colors, animals],
+				separator: "_",
+				style: "capital",
+				length: 3,
+			}) + Math.floor(Math.random() * 90 + 10);
+
+		setUsername(generatedName);
+	};
+
 	if (!username.trim() || !usernameSend) {
 		return (
 			<div className="flex justify-center items-center h-screen">
 				<div className="flex flex-col items-center gap-4 w-1/3 p-4 border border-gray-300 rounded-lg shadow-md">
-					<h1 className="text-4xl">Welcome to Red Tetris</h1>
+					<h1 className="text-4xl text-center">
+						Welcome to Red Tetris
+					</h1>
 					<div className="grid w-full item-center gap-1.5">
 						<Label htmlFor="please choose a username">
 							Please choose a username
@@ -77,7 +97,11 @@ export default function Home() {
 									onChange={(e) =>
 										setUsername(e.target.value)
 									}
+                  maxLength={30}
 								/>
+								<Button onClick={handleGeneratePseudo}>
+									Create a random Username
+								</Button>
 								<Button
 									className="disabled:opacity-50 disabled:cursor-not-allowed"
 									disabled={!username.trim()}
@@ -96,7 +120,9 @@ export default function Home() {
 	return (
 		<div className="flex justify-center items-center h-screen">
 			<div className="flex flex-col items-center gap-4 w-1/3 p-4 border border-gray-300 rounded-lg shadow-md">
-				<h1 className="text-4xl">Welcome to Red Tetris, {username}</h1>
+				<h1 className="text-4xl text-center">
+					Welcome to Red Tetris, {username}
+				</h1>
 				<div className="flex w-full items-center space-x-2">
 					<Input
 						className="border-gray-950"
@@ -104,12 +130,20 @@ export default function Home() {
 						value={room}
 						onChange={(e) => setRoom(e.target.value)}
 					/>
-					<Button className="disabled:opacity-50 disabled:cursor-not-allowed"
+					<Button
+						className="disabled:opacity-50 disabled:cursor-not-allowed"
 						disabled={!room.trim()}
-            onClick={roomCreation}>Create a room</Button>
-					<Button className="disabled:opacity-50 disabled:cursor-not-allowed"
+						onClick={roomCreation}
+					>
+						Create a room
+					</Button>
+					<Button
+						className="disabled:opacity-50 disabled:cursor-not-allowed"
 						disabled={!room.trim()}
-            onClick={roomJoin}>Join a room</Button>
+						onClick={roomJoin}
+					>
+						Join a room
+					</Button>
 				</div>
 				<div className="flex w-full items-center space-x-2">
 					{isChangingUsername ? (
@@ -119,6 +153,7 @@ export default function Home() {
 							value={newUsername}
 							onChange={(e) => setNewUsername(e.target.value)}
 							onBlur={() => setIsChangingUsername(false)}
+              maxLength={30}
 						/>
 					) : (
 						<Input
@@ -126,9 +161,12 @@ export default function Home() {
 							placeholder="New Username"
 							value={username}
 							onClick={() => setIsChangingUsername(true)}
-              readOnly
+							readOnly
 						/>
 					)}
+					<Button onClick={handleGeneratePseudo}>
+						Recreate a random Username
+					</Button>
 					<Button
 						className="disabled:opacity-50 disabled:cursor-not-allowed"
 						disabled={!newUsername.trim()}

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+import { toast, Toaster } from 'sonner';
 
 const SocketContext = createContext(null);
 
@@ -16,7 +17,8 @@ export const SocketProvider = ({ children }) => {
   const [level, setLevel] = useState();
   const [socket, setSocket] = useState(null);
   const [listeners] = useState(new Map());
-
+  const [host, setHost] = useState("");
+  const [players, setPlayers] = useState([]);
 
   useEffect(() => {
     const ws = io('http://localhost:3000', {
@@ -70,6 +72,14 @@ export const SocketProvider = ({ children }) => {
 
     ws.on('roomUpdate', (data) => {
       console.log('roomUpdate:', data)
+      setHost(data.host);
+      setPlayers(data.players);
+    })
+
+    ws.on('Error', (data) => {
+      toast("Error", {
+        description: data
+      });
     })
 
 
@@ -115,8 +125,17 @@ export const SocketProvider = ({ children }) => {
       level,
       sendMessage,
       sendWithPromise,
-      socket
+      socket,
+      host,
+      players
     }}>
+      <Toaster
+        position="bottom-right"
+        richColors
+        toastOptions={{
+            className: 'text-lg'
+        }}
+      />
       {children}
     </SocketContext.Provider>
   );

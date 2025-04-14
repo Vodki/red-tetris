@@ -63,6 +63,10 @@ app.prepare().then(() => {
     socket.on('start', (data) => {
       console.log('start data :', data)
       const room = rooms.get(data)
+      if (!room || !room.host) {
+        socket.emit('Error', 'Room not found')
+        return;
+      }
       if (room.host != socket.id) {
         console.log('Host and id are different')
         console.log('Host:', room.host)
@@ -79,6 +83,7 @@ app.prepare().then(() => {
       } else {
         const room = rooms.get(data.roomName)
         const engine = new GameEngine(socket, false)
+        engine.username = players.get(socket.id)
         room.engines.set(socket.id, engine)
         socket.join(data.roomName)
         socket.emit('joinRoomResponse', {

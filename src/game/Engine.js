@@ -22,10 +22,6 @@ export class GameEngine extends EventEmitter{
   }
 
   initializeSocketHandlers() {
-    this.socket.on('start', (username) => {
-      this.username = username;
-      this.start();
-    });
 
     this.socket.on('gameInput', (command) => {
       if (!this.isRunning) return;
@@ -85,7 +81,7 @@ export class GameEngine extends EventEmitter{
       this.lockCurrent();
       const n = this.board.clearFullLines();
       this.score += this.calculateScore(n);
-      if ((n + this.clearedLines) / 10 > this.clearedLines/10) {
+      if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
         this.level++
       }
       this.spawnNewTetromino()
@@ -122,7 +118,7 @@ export class GameEngine extends EventEmitter{
     this.clearedLines += clearedLines;
     this.score += this.calculateScore(clearedLines);
     
-    if ((clearedLines + this.clearedLines) / 10 > this.clearedLines / 10) {
+    if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
       this.level++;
     }
   }
@@ -204,7 +200,7 @@ export class GameEngine extends EventEmitter{
       this.lockCurrent();
       const n = this.board.clearFullLines();
       this.score += this.calculateScore(n);
-      if ((n + this.clearedLines) / 10 > this.clearedLines/10) {
+      if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
         this.level++
       }
       this.spawnNewTetromino()
@@ -225,7 +221,7 @@ export class GameEngine extends EventEmitter{
     this.lockCurrent();
     const n = this.board.clearFullLines();
     this.score += this.calculateScore(n);
-    if ((n + this.clearedLines) / 10 > this.clearedLines/10) {
+    if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
       this.level++
     }
     this.spawnNewTetromino()

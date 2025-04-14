@@ -4,36 +4,18 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useSocket } from "@/context/SocketContext";
 import { createEmptyGrid } from "../utils/gridUtils";
 import { Button } from "./ui/button";
-import {
-	uniqueNamesGenerator,
-	adjectives,
-	colors,
-	animals,
-} from "unique-names-generator";
-import { Input } from "./ui/input";
 import Leaderboard from "./Leaderboard";
 import "./Leaderboard.css";
 import GameStats from "./GameStats";
 import "./GameStats.css";
 import Grid from "./Grid";
+import { useRouter } from "next/router";
 
-const Tetris = () => {
+const Tetris = ({ room, username }) => {
 	const defaultGrid = createEmptyGrid();
-	const { grid, sendMessage, score, level, gameOn } = useSocket();
-	const [username, setUsername] = useState("");
+	const { grid, sendMessage, score, level, gameOn, host, players } =
+		useSocket();
 	const [leaderboard, setLeaderboard] = useState([]);
-
-	const handleGeneratePseudo = () => {
-		const generatedName =
-			uniqueNamesGenerator({
-				dictionaries: [adjectives, colors, animals],
-				separator: "_",
-				style: "capital",
-				length: 3,
-			}) + Math.floor(Math.random() * 90 + 10);
-
-		setUsername(generatedName);
-	};
 
 	useEffect(() => {
 		const fetchData = async () => {
@@ -95,8 +77,12 @@ const Tetris = () => {
 	}, [handleKeyDown]);
 
 	const handleStart = useCallback(() => {
-		if (!gameOn) sendMessage("start", username);
-	}, [sendMessage, gameOn, username]);
+		if (!gameOn) sendMessage("start", room);
+	}, [sendMessage, gameOn, room, username]);
+
+	if (!username.trim()) {
+		useRouter("/");
+	}
 
 	return (
 		<div
@@ -110,24 +96,25 @@ const Tetris = () => {
 		>
 			<div className="flex flex-col">
 				<Leaderboard entries={leaderboard} />
-				<Input
-					className="border-gray-950"
-					placeholder="Username"
-					value={username}
-					onChange={(e) => setUsername(e.target.value)}
-				/>
-				<Button className="my-4" onClick={handleGeneratePseudo}>
-					Create a random Username
-				</Button>
 				<Button
 					className="disabled:opacity-50 disabled:cursor-not-allowed"
-					disabled={!username.trim() || gameOn}
+					disabled={gameOn}
 					onClick={handleStart}
 				>
-					Start Game / Replay
+					Start Game / Restart
 				</Button>
 			</div>
-			<Grid grid={currentGrid} />
+			<Grid grid={currentGrid} isOponent={false} />
+			<div className="grid-rows-1 gap-4 items-center">
+				{players
+					?.filter((player) => player.socketId !== host)
+					.map((player, index) => (
+						<div className="row-span-1 flex flex-col items-center" key={index}>
+              <h4>{player.username}</h4>
+							<Grid grid={defaultGrid} isOponent={true} />
+						</div>
+					))}
+			</div>
 			<div>
 				<GameStats level={level || 0} score={score || 0} />
 			</div>
