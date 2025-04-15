@@ -1,7 +1,8 @@
 import { newRandomTetromino } from "./Tetromino.js";
 
 export class Room {
-  constructor(name, host) {
+  constructor(name, host, io) {
+    this.io = io
     this.name = name;
     this.engines = new Map();
     this.host = host
@@ -26,7 +27,23 @@ export class Room {
     };
   }
 
+  allPlayersDone() {
+    let done = true;
+    this.engines.forEach((engine) => {
+      if (engine.isRunning) {
+        done = false
+      } else if (engine.pieceNb != 0) {
+        engine.reset()
+      }
+    });
+    if (done) {
+      this.io.to(this.name).emit('allPlayersDone', true)
+    }
+    return done;
+  }
+
   startGames() {
+    this.io.to(this.name).emit('allPlayersDone', false)
     this.engines.forEach((engine) => {
       engine.start()
     })

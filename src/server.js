@@ -43,7 +43,7 @@ app.prepare().then(() => {
         })
         if (result == false) {
           console.log('Socket Id in room creation:', socket.id)
-          const room = new Room(data.roomName, socket.id)
+          const room = new Room(data.roomName, socket.id, io)
           console.log('After room creation')
           const engine = new GameEngine(socket, true, room.tetrominos)
           engine.room = room

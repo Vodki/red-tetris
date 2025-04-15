@@ -17,13 +17,23 @@ export class GameEngine extends EventEmitter{
     this.username = null;
     this.isRunning = false;
     this.room = null;
-    this.isHost = isHost
+    this.isHost = isHost;
 
     this.initializeSocketHandlers();
   }
 
-  initializeSocketHandlers() {
+  sendPenality(linesNb) {
+    this.room.engines.forEach((engine) => {
+      if (engine.socketId == this.socketId) {
+        return;
+      }
+      if(!engine.board.addPenality(linesNb)) {
+        engine.isRunning = false;
+      }
+    })
+  }
 
+  initializeSocketHandlers() {
     this.socket.on('gameInput', (command) => {
       if (!this.isRunning) return;
       
@@ -81,6 +91,9 @@ export class GameEngine extends EventEmitter{
     else {
       this.lockCurrent();
       const n = this.board.clearFullLines();
+      if (n > 1) {
+        this.sendPenality(n - 1);
+      }
       this.score += this.calculateScore(n);
       if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
         this.level++
@@ -205,6 +218,9 @@ export class GameEngine extends EventEmitter{
     } else {
       this.lockCurrent();
       const n = this.board.clearFullLines();
+      if (n > 1) {
+        this.sendPenality(n - 1);
+      }
       this.score += this.calculateScore(n);
       if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
         this.level++
@@ -226,6 +242,9 @@ export class GameEngine extends EventEmitter{
     }
     this.lockCurrent();
     const n = this.board.clearFullLines();
+    if (n > 1) {
+      this.sendPenality(n - 1);
+    }
     this.score += this.calculateScore(n);
     if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
       this.level++
@@ -244,9 +263,9 @@ export class GameEngine extends EventEmitter{
       score: this.score,
       level: this.level,
       nextPiece: this.next,
-      gameOver: this.gameOver
+      gameOver: this.gameOver,
     };
-
+    this.room.allPlayersDone();
     this.socket.emit('GameUpdate', state);
   }
 

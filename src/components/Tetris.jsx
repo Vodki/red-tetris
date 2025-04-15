@@ -14,7 +14,7 @@ import { Toaster } from "sonner";
 
 const Tetris = ({ room, username }) => {
 	const defaultGrid = createEmptyGrid();
-	const { grid, sendMessage, score, level, gameOn, host, players, socket } =
+	const { grid, sendMessage, score, level, gameOn, host, players, socket, allPlayersDone } =
 		useSocket();
 	const [leaderboard, setLeaderboard] = useState([]);
 
@@ -100,7 +100,7 @@ const Tetris = ({ room, username }) => {
 				<Leaderboard entries={leaderboard} />
 				<Button
 					className="disabled:opacity-50 disabled:cursor-not-allowed"
-					disabled={gameOn}
+					disabled={!allPlayersDone}
 					onClick={handleStart}
 				>
 					Start Game / Restart

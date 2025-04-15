@@ -9,14 +9,31 @@ export class Board {
       return this.grid.map(row => [...row]);
     }
   
+    addPenality(nb) {
+      for (let i = 0; i < this.grid.length - nb; i++) {
+        if (i <= nb - 1 && !this.lineIsEmpty(i)) {
+          return 0;
+        }
+        this.grid[i] = this.grid[i + nb].slice();
+      }
+      for (let i = this.grid.length - nb; i < this.grid.length ; i++) {
+        this.grid[i].fill(-1);
+      }
+      return 1;
+    }
+
     fillBoard(x, y, color) {
       if (x >= 0 && y >= 0 && y < this.grid.length && x < this.grid[0].length) {
         this.grid[y][x] = color;
       }
     }
   
+    lineIsEmpty(y) {
+      return this.grid[y].every(cell => cell == 0);
+    }
+
     lineIsFull(y) {
-      return this.grid[y].every(cell => cell !== 0);
+      return this.grid[y].every(cell => cell > 0);
     }
   
     clearFullLines() {

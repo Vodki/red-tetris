@@ -19,6 +19,7 @@ export const SocketProvider = ({ children }) => {
   const [listeners] = useState(new Map());
   const [host, setHost] = useState("");
   const [players, setPlayers] = useState([]);
+  const [allPlayersDone, setAllPlayersDone] = useState(true);
 
   useEffect(() => {
     const ws = io('http://localhost:3000', {
@@ -34,10 +35,10 @@ export const SocketProvider = ({ children }) => {
     
     ws.on('GameUpdate', (message) => {
       try {
-        //console.log(message)
+        console.log(message)
         setGrid(message.grid)
         setScore(message.score)
-        setGameOn(!message.gameOn)
+        setGameOn(!message.gameOver)
         setLevel(message.level)
       }
       catch (error) {
@@ -69,6 +70,10 @@ export const SocketProvider = ({ children }) => {
         listeners.delete(correlationId);
       }
     });
+
+    ws.on('allPlayersDone', (data) => {
+      setAllPlayersDone(data);
+    })
 
     ws.on('roomUpdate', (data) => {
       console.log('roomUpdate:', data)
@@ -131,7 +136,8 @@ export const SocketProvider = ({ children }) => {
       sendWithPromise,
       socket,
       host,
-      players
+      players,
+      allPlayersDone,
     }}>
       {children}
     </SocketContext.Provider>
