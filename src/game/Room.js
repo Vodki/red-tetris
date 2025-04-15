@@ -12,6 +12,10 @@ export class Room {
     this.tetrominos.push(newRandomTetromino());
   }
 
+  roomUpdate() {
+    this.io.to(this.name).emit('roomUpdate', this.serializePlayers())
+  }
+
   serializePlayers() {
     const players = [];
     this.engines.forEach((engine) => {

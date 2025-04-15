@@ -22,6 +22,25 @@ export class GameEngine extends EventEmitter{
     this.initializeSocketHandlers();
   }
 
+  disconnect() {
+    if (this.room == null) {
+      return
+    } else if (this.room.engines.size == 1) {
+      this.room = null;
+      return;
+    } else if (this.room.host == this.socketId) {
+      const newHostFound = false
+      this.room.engines.forEach((engine) => {
+        if (!newHostFound && engine.socketId != engine.room.host) {
+          engine.room.host = engine.socketId
+          this.isHost = true
+        }
+      })
+    }
+    this.room.engines.delete(this.socketId)
+    this.room.roomUpdate()
+  }
+
   sendPenality(linesNb) {
     this.room.engines.forEach((engine) => {
       if (engine.socketId == this.socketId) {

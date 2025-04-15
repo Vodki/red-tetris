@@ -15,8 +15,8 @@ app.prepare().then(() => {
   const httpServer = createServer(handler);
   const rooms = new Map();
   const players = new Map();
+  const engines = new Map();
   const io = new Server(httpServer);
-
 
   io.on("connection", (socket) => {
     console.log('Client connected:', socket.id);
@@ -46,6 +46,7 @@ app.prepare().then(() => {
           const room = new Room(data.roomName, socket.id, io)
           console.log('After room creation')
           const engine = new GameEngine(socket, true, room.tetrominos)
+          engines.set(socket.id, engine)
           engine.room = room
           console.log('After engine creation')
           engine.username = players.get(socket.id)
@@ -63,6 +64,17 @@ app.prepare().then(() => {
       }
     
       
+    })
+
+    socket.on('disconnect', () => {
+      players.delete(socket.id)
+      const engine = engines.get(socket.id)
+      if (engine == null) {
+        return;
+      } else {
+        engine.disconnect()
+      }
+      console.log('Client disconnected')
     })
 
     socket.on('start', (data) => {
@@ -91,6 +103,7 @@ app.prepare().then(() => {
         engine.username = players.get(socket.id)
         room.engines.set(socket.id, engine)
         engine.room = room
+        engines.set(socket.id, engine)
         socket.join(data.roomName)
         socket.emit('joinRoomResponse', {
           correlationId: data.correlationId,
@@ -100,9 +113,9 @@ app.prepare().then(() => {
         io.to(data.roomName).emit('roomUpdate', room.serializePlayers())
 
       }
-  //    socket.onAny((eventName, ...args) => {
-  //      console.log(`⬅️ Received from ${socket.id}:`, eventName, args);
-  //    });
+     socket.onAny((eventName, ...args) => {
+       console.log(`⬅️ Received from ${socket.id}:`, eventName, args);
+     });
   //    socket.onAnyOutgoing((eventName, ...args) => {
   //      console.log(`➡️ Sending to ${socket.id}:`, eventName, args);
   //    });
