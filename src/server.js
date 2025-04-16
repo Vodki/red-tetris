@@ -19,14 +19,6 @@ app.prepare().then(() => {
   const io = new Server(httpServer);
 
   io.on("connection", (socket) => {
-    console.log('Client connected:', socket.id);
-    //const engine = new Player(socket)
-    //sessions.set(socket.id, engine);
-    //socket.emit('Salut mon pote')
-    console.log('Websocket Connection Backend');
-//    engine.on('update', (state) => {
-//      socket.emit('GameUpdate', state);
-//    });
 
     socket.on('setUsername', (data) => {
       players.set(socket.id, data)
@@ -35,7 +27,6 @@ app.prepare().then(() => {
     socket.on('newRoom', async (data) => {
       try {
         const result = await roomExists(io, data.roomName)
-        console.log('room exist =', result)
 
         if (result == false) {
           const room = new Game(data.roomName, socket.id, io)
@@ -77,7 +68,6 @@ app.prepare().then(() => {
       } else {
         engine.disconnect()
       }
-      console.log('Client disconnected')
     })
 
     socket.on('start', (data) => {
@@ -135,9 +125,9 @@ app.prepare().then(() => {
         error: error.message,
       })
      }
-     socket.onAny((eventName, ...args) => {
-       console.log(`⬅️ Received from ${socket.id}:`, eventName, args);
-     });
+    //  socket.onAny((eventName, ...args) => {
+    //    console.log(`⬅️ Received from ${socket.id}:`, eventName, args);
+    //  });
   //    socket.onAnyOutgoing((eventName, ...args) => {
   //      console.log(`➡️ Sending to ${socket.id}:`, eventName, args);
   //    });

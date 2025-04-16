@@ -26,7 +26,6 @@ export default function Home() {
 
 	const roomCreation = async () => {
 		try {
-			console.log("before response");
 			const canCreate = await sendWithPromise("newRoom", room);
 			if (canCreate == true) {
 				router.push(`${room}/${username}`);

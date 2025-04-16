@@ -104,7 +104,6 @@ export class Player extends EventEmitter{
     if (this.gameOver) return;
 
     if (this.canMoveDown()) {
-      //console.log(this.board.grid)
       this.current.position.y++;
     }
     else {
@@ -187,7 +186,6 @@ export class Player extends EventEmitter{
         return false;
       }
       if (y >= 0 && this.board.grid[y]?.[x] !== 0) {
-        //console.log(this.board.grid)
         return false;
       }
     }

@@ -30,7 +30,6 @@ export const SocketProvider = ({ children }) => {
     });
     
     ws.on('connect', () => {
-      console.log(`Connected to WS server with ID : ${ws.id}`);
       ws.emit('new-game');
     });
     
@@ -46,11 +45,9 @@ export const SocketProvider = ({ children }) => {
       }
     });
     ws.on('disconnect', () => {
-      console.log('WebSocket Disconnected')
     });
     
     ws.on('newRoomResponse', (response) => {
-      console.log('newRoomResponse =', response)
       const { correlationId, error, canCreate, message } = response;
       const handler = listeners.get(correlationId);
       if (handler) {
@@ -63,7 +60,6 @@ export const SocketProvider = ({ children }) => {
     });
 
     ws.on('joinRoomResponse', (response) => {
-      console.log('joinRoomResponse', response)
       const { correlationId, error, canJoin, message } = response;
       const handler = listeners.get(correlationId);
 
@@ -81,7 +77,6 @@ export const SocketProvider = ({ children }) => {
     })
 
     ws.on('roomUpdate', (data) => {
-      console.log('roomUpdate:', data)
       setHost(data.host);
       setPlayers(data.players);
     })
@@ -90,9 +85,9 @@ export const SocketProvider = ({ children }) => {
       console.log('GameShadow:', data)
     })
 
-    ws.onAny((message) => {
-      console.log('onAny:', message)
-    })
+    // ws.onAny((message) => {
+    //   console.log('onAny:', message)
+    // })
 
     setSocket(ws)
     return () => ws.disconnect();
@@ -115,7 +110,6 @@ export const SocketProvider = ({ children }) => {
 
       const correlationId = Math.random().toString(36).substr(2, 9);
       
-      console.log('sendWithPromise data =', data)
       listeners.set(correlationId, { resolve, reject });
       socket.emit(type, { 
         roomName: data, // Pass room name as a property
