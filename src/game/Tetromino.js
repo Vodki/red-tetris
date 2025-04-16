@@ -1,4 +1,4 @@
-export class Tetromino {
+export class Piece {
     constructor(id, rotations, position, color, rotationIndex) {
       this.id = id;
       this.rotations = rotations;
@@ -16,7 +16,7 @@ export class Tetromino {
     }
   
     clone() {
-      let t = new Tetromino(
+      let t = new Piece(
         this.id,
         structuredClone(this.rotations),
         structuredClone(this.position),
@@ -36,14 +36,14 @@ export function newRandomTetromino() {
 }
 
 const AllTetrominoes = [
-    new Tetromino('I',
+    new Piece('I',
       [
         [{x:0,y:-1}, {x:0,y:0}, {x:0,y:1}, {x:0,y:2}],
         [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:2,y:0}]
       ],
       {x:4,y:1}, 1,
     ),
-    new Tetromino('J',
+    new Piece('J',
       [
         [{x:-1,y:-1}, {x:-1,y:0}, {x:0,y:0}, {x:1,y:0}],
         [{x:0,y:-1}, {x:0,y:0}, {x:0,y:1}, {x:1,y:-1}],
@@ -52,7 +52,7 @@ const AllTetrominoes = [
       ],
       {x:4,y:1}, 2
     ),
-    new Tetromino('L', 
+    new Piece('L', 
       [
         [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:1,y:-1}],
         [{x:0,y:-1}, {x:0,y:0}, {x:0,y:1}, {x:1,y:1}],
@@ -61,18 +61,18 @@ const AllTetrominoes = [
       ],
       {x:4,y:1}, 3
     ),
-    new Tetromino('O', 
+    new Piece('O', 
       [[{x:0,y:0}, {x:1,y:0}, {x:0,y:1}, {x:1,y:1}]],
       {x:4,y:0}, 4
     ),
-    new Tetromino('S',
+    new Piece('S',
       [
         [{x:0,y:0}, {x:1,y:0}, {x:-1,y:1}, {x:0,y:1}],
         [{x:0,y:-1}, {x:0,y:0}, {x:1,y:0}, {x:1,y:1}]
       ],
       {x:4,y:0}, 5
     ),
-    new Tetromino('T',
+    new Piece('T',
       [
         [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:0,y:1}],
         [{x:0,y:-1}, {x:0,y:0}, {x:1,y:0}, {x:0,y:1}],
@@ -81,7 +81,7 @@ const AllTetrominoes = [
       ],
       {x:4,y:0}, 6
     ),
-    new Tetromino('Z',
+    new Piece('Z',
       [
         [{x:-1,y:0}, {x:0,y:0}, {x:0,y:1}, {x:1,y:1}],
         [{x:1,y:-1}, {x:0,y:0}, {x:1,y:0}, {x:0,y:1}]

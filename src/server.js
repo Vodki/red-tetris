@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import next from "next";
 import { Server } from "socket.io";
-import { GameEngine } from "./game/Engine.js";
-import { roomExists, Room } from "./game/Room.js";
+import { Player } from "./game/Engine.js";
+import { roomExists, Game } from "./game/Room.js";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "localhost";
@@ -20,7 +20,7 @@ app.prepare().then(() => {
 
   io.on("connection", (socket) => {
     console.log('Client connected:', socket.id);
-    //const engine = new GameEngine(socket)
+    //const engine = new Player(socket)
     //sessions.set(socket.id, engine);
     //socket.emit('Salut mon pote')
     console.log('Websocket Connection Backend');
@@ -38,8 +38,8 @@ app.prepare().then(() => {
         console.log('room exist =', result)
 
         if (result == false) {
-          const room = new Room(data.roomName, socket.id, io)
-          const engine = new GameEngine(socket, true, room.tetrominos)
+          const room = new Game(data.roomName, socket.id, io)
+          const engine = new Player(socket, true, room.tetrominos)
           engines.set(socket.id, engine)
           engine.room = room
           engine.username = players.get(socket.id)
@@ -109,7 +109,7 @@ app.prepare().then(() => {
           })
         } else {
           const room = rooms.get(data.roomName)
-          const engine = new GameEngine(socket, false, room.tetrominos)
+          const engine = new Player(socket, false, room.tetrominos)
           engine.username = players.get(socket.id)
           room.engines.set(socket.id, engine)
           engine.room = room

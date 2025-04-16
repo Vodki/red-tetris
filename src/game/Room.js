@@ -1,6 +1,6 @@
 import { newRandomTetromino } from "./Tetromino.js";
 
-export class Room {
+export class Game {
   constructor(name, host, io) {
     this.io = io
     this.name = name;

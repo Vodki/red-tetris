@@ -6,7 +6,7 @@ const ROWS = 20;
 const COLS = 10;
 const INITIAL_SPEED = 500;
 
-export class GameEngine extends EventEmitter{
+export class Player extends EventEmitter{
   constructor(socket, isHost, tetrominos) {
     super();
     this.tetrominos = tetrominos
