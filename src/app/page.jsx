@@ -12,6 +12,8 @@ import {
 	colors,
 	animals,
 } from "unique-names-generator";
+import { toast } from "sonner";
+
 
 export default function Home() {
 	const { sendMessage, sendWithPromise } = useSocket();
@@ -25,26 +27,23 @@ export default function Home() {
 	const roomCreation = async () => {
 		try {
 			console.log("before response");
-			const response = await sendWithPromise("newRoom", room);
-			console.log("response = ", response);
-			if (!response.exist) {
+			const canCreate = await sendWithPromise("newRoom", room);
+			if (canCreate == true) {
 				router.push(`${room}/${username}`);
 			}
 		} catch (error) {
-			console.error("New Room Creation Failed");
+			console.error(error.message);
 		}
 	};
 
 	const roomJoin = async () => {
 		try {
-			console.log("before response");
-			const response = await sendWithPromise("joinRoom", room);
-			console.log("response = ", response);
-			if (!response.exist) {
+			const canJoin = await sendWithPromise("joinRoom", room);
+			if (canJoin == true) {
 				router.push(`${room}/${username}`);
 			}
 		} catch (error) {
-			console.error("New Room Creation Failed");
+			console.error(error.message);
 		}
 	};
 

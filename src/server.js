@@ -34,30 +34,33 @@ app.prepare().then(() => {
 
     socket.on('newRoom', async (data) => {
       try {
-        console.log('newRoom data : ', data)
         const result = await roomExists(io, data.roomName)
+        console.log('room exist =', result)
 
-        socket.emit('newRoomResponse', {
-          correlationId: data.correlationId,
-          exist: result
-        })
         if (result == false) {
-          console.log('Socket Id in room creation:', socket.id)
           const room = new Room(data.roomName, socket.id, io)
-          console.log('After room creation')
           const engine = new GameEngine(socket, true, room.tetrominos)
           engines.set(socket.id, engine)
           engine.room = room
-          console.log('After engine creation')
           engine.username = players.get(socket.id)
           room.engines.set(engine.socketId, engine)
           rooms.set(room.name, room)
-          console.log('rooms after set', rooms)
           socket.join(data.roomName)
+          socket.emit('newRoomResponse', {
+            correlationId: data.correlationId,
+            canCreate: true,
+            message: `Room ${data.roomName} created successfully`
+          })
           io.to(data.roomName).emit('roomUpdate', room.serializePlayers())
+        } else {
+          socket.emit('newRoomResponse', {
+            correlationId: data.correlationId,
+            canCreate: false,
+            message: `Room ${data.roomName} already exist`
+          })
         }
       } catch (error) {
-        socket.emit('sendError', {
+        socket.emit('newRoomResponse', {
           correlationId: data.correlationId,
           error: error.message
         });
@@ -78,41 +81,54 @@ app.prepare().then(() => {
     })
 
     socket.on('start', (data) => {
-      console.log('start data :', data)
       const room = rooms.get(data)
       if (!room || !room.host) {
         socket.emit('sendError', 'Room not found')
         return;
       }
       if (room.host != socket.id) {
-        console.log('Host and id are different')
-        console.log('Host:', room.host)
-        console.log('Socket Id:', socket.id)
         return
       }
       room.startGames()
     })
 
-    socket.on('joinRoom', (data) => {
-      if (!roomExists(io, data.roomName)) {
-        console.log('I didnt find the room:', data.roomName)
-        socket.emit('Error', `Room ${data.roomName} doesn't exist`)
-      } else {
-        const room = rooms.get(data.roomName)
-        const engine = new GameEngine(socket, false, room.tetrominos)
-        engine.username = players.get(socket.id)
-        room.engines.set(socket.id, engine)
-        engine.room = room
-        engines.set(socket.id, engine)
-        socket.join(data.roomName)
-        socket.emit('joinRoomResponse', {
-          correlationId: data.correlationId,
-          exist: true,
-        })
-        socket.to(data.roomName).emit(`${players.get(socket.id)} joins the game`)
-        io.to(data.roomName).emit('roomUpdate', room.serializePlayers())
+    socket.on('joinRoom', async (data) => {
+      try {
+        const result = await roomExists(io, data.roomName)
+        if (result == false) {
+          socket.emit('joinRoomResponse', {
+            correlationId: data.correlationId,
+            canJoin: false,
+            message: "Room doesn't exist",
+          })
+        } else if(rooms.get(data.roomName).engines.size == 4) {
+          socket.emit('joinRoomResponse', {
+            correlationId: data.correlationId,
+            canJoin: false,
+            message: "Room is full",
+          })
+        } else {
+          const room = rooms.get(data.roomName)
+          const engine = new GameEngine(socket, false, room.tetrominos)
+          engine.username = players.get(socket.id)
+          room.engines.set(socket.id, engine)
+          engine.room = room
+          engines.set(socket.id, engine)
+          socket.join(data.roomName)
+          socket.emit('joinRoomResponse', {
+            correlationId: data.correlationId,
+            canJoin: true,
+          })
+          socket.to(data.roomName).emit(`${players.get(socket.id)} joins the game`)
+          io.to(data.roomName).emit('roomUpdate', room.serializePlayers())
 
-      }
+        }
+     } catch (error) {
+      socket.emit('joinRoomResponse', {
+        correlationId: data.correlationId,
+        error: error.message,
+      })
+     }
      socket.onAny((eventName, ...args) => {
        console.log(`⬅️ Received from ${socket.id}:`, eventName, args);
      });

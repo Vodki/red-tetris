@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+
 
 const SocketContext = createContext(null);
 
@@ -35,7 +36,6 @@ export const SocketProvider = ({ children }) => {
     
     ws.on('GameUpdate', (message) => {
       try {
-        console.log(message)
         setGrid(message.grid)
         setScore(message.score)
         setGameOn(!message.gameOver)
@@ -50,24 +50,29 @@ export const SocketProvider = ({ children }) => {
     });
     
     ws.on('newRoomResponse', (response) => {
-      const { correlationId, error, exist } = response;
-      console.log('ws.on response', response)
+      console.log('newRoomResponse =', response)
+      const { correlationId, error, canCreate, message } = response;
       const handler = listeners.get(correlationId);
-      
       if (handler) {
-        error ? handler.reject(error) : handler.resolve(exist);
+        error ? handler.reject(error) : handler.resolve(canCreate);
         listeners.delete(correlationId);
+      }
+      if (canCreate == false) {
+        toast.error(message)
       }
     });
 
     ws.on('joinRoomResponse', (response) => {
-      const { correlationId, error, exist } = response;
-      console.log('ws.on response', response)
+      console.log('joinRoomResponse', response)
+      const { correlationId, error, canJoin, message } = response;
       const handler = listeners.get(correlationId);
-      
+
       if (handler) {
-        error ? handler.reject(error) : handler.resolve(exist);
+        error ? handler.reject(error) : handler.resolve(canJoin);
         listeners.delete(correlationId);
+      }
+      if (canJoin == false) {
+        toast.error(message)
       }
     });
 
@@ -81,19 +86,12 @@ export const SocketProvider = ({ children }) => {
       setPlayers(data.players);
     })
 
-    ws.on('sendError', (data) => {
-      console.log("In sendError")
-      toast("Error", {
-        description: data
-      });
-    })
-
     ws.on('GameShadow', (data) => {
       console.log('GameShadow:', data)
     })
 
     ws.onAny((message) => {
-      //console.log('onAny:', message)
+      console.log('onAny:', message)
     })
 
     setSocket(ws)
@@ -103,7 +101,6 @@ export const SocketProvider = ({ children }) => {
   const sendMessage = (type, data) => {
     if (socket?.connected) { 
       socket.emit(type, data);
-      console.log('message sent :', type)
     } else {
       console.error('Websocket connection not ready')
     }
@@ -118,6 +115,7 @@ export const SocketProvider = ({ children }) => {
 
       const correlationId = Math.random().toString(36).substr(2, 9);
       
+      console.log('sendWithPromise data =', data)
       listeners.set(correlationId, { resolve, reject });
       socket.emit(type, { 
         roomName: data, // Pass room name as a property

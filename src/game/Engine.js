@@ -43,7 +43,7 @@ export class GameEngine extends EventEmitter{
 
   sendPenality(linesNb) {
     this.room.engines.forEach((engine) => {
-      if (engine.socketId == this.socketId) {
+      if (engine.socketId == this.socketId || engine.isRunning == false) {
         return;
       }
       if(!engine.board.addPenality(linesNb)) {

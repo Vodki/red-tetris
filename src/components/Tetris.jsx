@@ -95,7 +95,6 @@ const Tetris = ({ room, username }) => {
 				columnGap: "3rem",
 			}}
 		>
-			<Toaster position="bottom-right" richColors/>
 			<div className="flex flex-col">
 				<Leaderboard entries={leaderboard} />
 				<Button

@@ -55,6 +55,5 @@ export class Room {
 }
 
 export function roomExists(io, roomName) {
-    console.log(io.sockets.adapter.rooms)
     return io.sockets.adapter.rooms.has(roomName)
   }
