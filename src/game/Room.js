@@ -42,6 +42,7 @@ export class Game {
     });
     if (done) {
       this.io.to(this.name).emit('allPlayersDone', true)
+      this.isRunning = false;
     }
     return done;
   }
@@ -51,6 +52,7 @@ export class Game {
     this.engines.forEach((engine) => {
       engine.start()
     })
+    this.isRunning = true;
   }
 }
 

@@ -107,6 +107,12 @@ app.prepare().then(() => {
             canJoin: false,
             message: "Room is full",
           })
+        } else if (rooms.get(data.roomName).isRunning) {
+          socket.emit('joinRoomResponse', {
+            correlationId: data.correlationId,
+            canJoin: false,
+            message: "A game is running, please wait for the end",
+          })
         } else {
           const room = rooms.get(data.roomName)
           const engine = new Player(socket, false, room.tetrominos)
