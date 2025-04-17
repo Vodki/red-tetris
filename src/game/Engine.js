@@ -23,6 +23,10 @@ export class Player extends EventEmitter{
   }
 
   disconnect() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId)
+      this.reset()
+    }
     if (this.room == null) {
       return
     } else if (this.room.engines.size == 1) {
@@ -45,10 +49,10 @@ export class Player extends EventEmitter{
     this.room.engines.forEach((engine) => {
       if (engine.socketId == this.socketId || engine.isRunning == false) {
         return;
-      }
-      if(!engine.board.addPenality(linesNb)) {
+      } else if(!engine.board.addPenality(linesNb)) {
         engine.isRunning = false;
       }
+      engine.sendGameShadow();
     })
   }
 
@@ -160,25 +164,12 @@ export class Player extends EventEmitter{
     }
   }
 
-/*  isValidPosition(tetromino) {
-    return tetromino.currentShape.every(block => {
-      const x = tetromino.position.x + block.x;
-      const y = tetromino.position.y + block.y;
-      
-      return x >= 0 && x < COLS && 
-             y < ROWS && 
-             (y < 0 || this.board.grid[y][x] === 0);
-    });
-  } */
-
   isValidPosition(tetromino) {
     const shape = tetromino.currentShape;
     for (const block of shape) {
-      // Convert relative to board coordinates
       const x = tetromino.position.x + block.x;
       const y = tetromino.position.y + block.y;
 
-      // Boundary checks
       if (x < 0 || x >= COLS) {
         return false;
       }
@@ -202,7 +193,6 @@ export class Player extends EventEmitter{
     return bool;
   }
 
-  // Movement methods
   rotateCurrent() {
     const originalRotation = this.current.rotationIndex;
     this.current.rotate();
@@ -288,7 +278,7 @@ export class Player extends EventEmitter{
 
   sendGameShadow() {
     const state = {
-      grid: this.getVisualGrid(),
+      grid: this.board.grid,
       score: this.score,
       level: this.level,
       nextPiece: this.next,
@@ -317,7 +307,7 @@ export class Player extends EventEmitter{
       const x = ghost.position.x + block.x;
       const y = ghost.position.y + block.y;
       if (y >= 0 && x >= 0 && x < COLS && y < ROWS) {
-        grid[y][x] = 9; // Ghost color indicator
+        grid[y][x] = 9;
       }
     });
   }
@@ -334,7 +324,6 @@ export class Player extends EventEmitter{
 
   handleGameOver() {
     this.stop();
-    // Save score to leaderboard
     this.socket.emit('game-over', {
       username: this.username,
       score: this.score

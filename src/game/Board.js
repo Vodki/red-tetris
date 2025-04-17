@@ -40,19 +40,17 @@ export class Board {
       let total = 0;
       const filledLines = [];
       
-      // Bottom-up iteration
       for (let i = this.grid.length - 1; i >= 0; i--) {
         if (this.lineIsFull(i)) {
           filledLines.push(i);
           total++;
         } else if (filledLines.length > 0) {
           this.clearLines(filledLines);
-          i = this.grid.length; // Reset loop
+          i = this.grid.length;
           filledLines.length = 0;
         }
       }
       
-      // Clear any remaining filled lines
       if (filledLines.length > 0) {
         this.clearLines(filledLines);
       }
@@ -65,7 +63,6 @@ export class Board {
       const newGrid = this.grid.filter((_, index) => !linesToClear.has(index));
       const removedLines = this.grid.length - newGrid.length;
       
-      // Add empty lines at the top
       this.grid = [
         ...Array.from({ length: removedLines }, () => 
           Array(this.grid[0].length).fill(0)

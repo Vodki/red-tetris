@@ -2,7 +2,6 @@
     display: inline-block;
     border: 2px solid #333;
     background: #111;
-    margin: 20px 0;
   }
   
   .row {
@@ -16,46 +15,57 @@
     box-sizing: border-box;
   }
 
-  .oponent-cell {
+  .opponent-cell {
     width: 12px;
     height: 12px;
-    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
+  }
+
+  .opponent-filled {
+    width: 12px;
+    height: 12px;
+    background-color: grey;
     box-sizing: border-box;
   }
   
   .color-1 { /* I-block - Cyan */
     border: 1px solid rgba(255, 255, 255, 0.1);
-    background-image: url('../assets/blue_square.svg');
+    background-image: url('../assets/blue_square.jpg');
   }
   
   .color-2 { /* J-block - Blue */
     border: 1px solid rgba(255, 255, 255, 0.1);
-    background-image: url('../assets/dark_blue_square.svg');
+    background-image: url('../assets/dark_blue_square.jpg');
   }
   
   .color-3 { /* L-block - Orange */
     border: 1px solid rgba(255, 255, 255, 0.1);
-    background-image: url('../assets/orange_square.svg');
+    background-image: url('../assets/orange_square.jpg');
   }
   
   .color-4 { /* O-block - Yellow */
     border: 1px solid rgba(255, 255, 255, 0.1);
-    background-image: url('../assets/yellow_square.svg');
+    background-image: url('../assets/yellow_square.jpg');
   }
   
   .color-5 { /* S-block - Green */
     border: 1px solid rgba(255, 255, 255, 0.1);
-    background-image: url('../assets/green_square.svg');
+    background-image: url('../assets/green_square.jpg');
   }
   
   .color-6 { /* T-block - Purple */
     border: 1px solid rgba(255, 255, 255, 0.1);
-    background-image: url('../assets/magenta_square.svg');
+    background-image: url('../assets/magenta_square.jpg');
   }
   
   .color-7 { /* Z-block - Red */
     border: 1px solid rgba(255, 255, 255, 0.1);
-    background-image: url('../assets/red_square.svg');
+    background-image: url('../assets/red_square.jpg');
+  }
+
+  .color--1 {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-image: url('../assets/grey_square.jpg');
   }
   
   .color-9 { /* Previsualisation */

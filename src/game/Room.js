@@ -21,7 +21,8 @@ export class Game {
     this.engines.forEach((engine) => {
       players.push({
         username: engine.username,
-        socketId: engine.socketId
+        socketId: engine.socketId,
+        grid: engine.getVisualGrid(),
       });
     });
 

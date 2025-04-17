@@ -31,7 +31,7 @@ export function newRandomTetromino() {
   const index = Math.floor(Math.random() * AllTetrominoes.length);
   const original = AllTetrominoes[index];
   const clone = original.clone();
-  clone.rotationIndex = original.rotations.length * 1000; // Mirror Go's rotation setup
+  clone.rotationIndex = original.rotations.length * 1000;
   return clone;
 }
 

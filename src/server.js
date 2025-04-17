@@ -7,7 +7,6 @@ import { roomExists, Game } from "./game/Room.js";
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "localhost";
 const port = 3000;
-// when using middleware `hostname` and `port` must be provided below
 const app = next({ dev, hostname, port });
 const handler = app.getRequestHandler();
 
@@ -58,6 +57,16 @@ app.prepare().then(() => {
       }
     
       
+    })
+
+    socket.on('leaveRoom', (data) => {
+      const room = rooms.get(data)
+      if (room == null) {
+        return;
+      } else {
+        const engine = engines.get(socket.id)
+        engine.disconnect()
+      }
     })
 
     socket.on('disconnect', () => {
@@ -125,12 +134,6 @@ app.prepare().then(() => {
         error: error.message,
       })
      }
-    //  socket.onAny((eventName, ...args) => {
-    //    console.log(`⬅️ Received from ${socket.id}:`, eventName, args);
-    //  });
-  //    socket.onAnyOutgoing((eventName, ...args) => {
-  //      console.log(`➡️ Sending to ${socket.id}:`, eventName, args);
-  //    });
   })
   
   });

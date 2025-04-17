@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSocket } from "@/context/SocketContext";
 import { useRouter } from "next/navigation";
 import {
@@ -14,7 +14,6 @@ import {
 } from "unique-names-generator";
 import { toast } from "sonner";
 
-
 export default function Home() {
 	const { sendMessage, sendWithPromise } = useSocket();
 	const router = useRouter();
@@ -23,8 +22,24 @@ export default function Home() {
 	const [room, setRoom] = useState("");
 	const [usernameSend, setUsernameSend] = useState(false);
 	const [isChangingUsername, setIsChangingUsername] = useState(false);
+	const [key, setKey] = useState(0); 
+
+	const roomNameRegex = /^[a-zA-Z0-9]+$/;
+
+	useEffect(() => {
+		setUsername("");
+		setNewUsername("");
+		setRoom("");
+		setUsernameSend(false);
+		setIsChangingUsername(false);
+		setKey((prevKey) => prevKey + 1);
+	  }, []);
 
 	const roomCreation = async () => {
+		if (!roomNameRegex.test(room)) {
+			toast.error("Room name can only contain alphanum characters.");
+			return;
+		}
 		try {
 			const canCreate = await sendWithPromise("newRoom", room);
 			if (canCreate == true) {
@@ -36,6 +51,10 @@ export default function Home() {
 	};
 
 	const roomJoin = async () => {
+		if (!roomNameRegex.test(room)) {
+			toast.error("Room name can only contain alphanum characters.");
+			return;
+		}
 		try {
 			const canJoin = await sendWithPromise("joinRoom", room);
 			if (canJoin == true) {
@@ -77,12 +96,12 @@ export default function Home() {
 
 	if (!username.trim() || !usernameSend) {
 		return (
-			<div className="flex justify-center items-center h-screen">
+			<div key={key} className="flex justify-center items-center h-screen">
 				<div className="flex flex-col items-center gap-4 w-1/3 p-4 border border-gray-300 rounded-lg shadow-md">
 					<h1 className="text-4xl text-center">
 						Welcome to Red Tetris
 					</h1>
-					<div className="grid w-full item-center gap-1.5">
+					<div className="w-full item-center gap-1.5">
 						<Label htmlFor="please choose a username">
 							Please choose a username
 						</Label>
@@ -95,9 +114,12 @@ export default function Home() {
 									onChange={(e) =>
 										setUsername(e.target.value)
 									}
-                  maxLength={30}
+									maxLength={30}
 								/>
-								<Button onClick={handleGeneratePseudo}>
+								<Button
+									onClick={handleGeneratePseudo}
+									type="button"
+								>
 									Create a random Username
 								</Button>
 								<Button
@@ -116,7 +138,7 @@ export default function Home() {
 	}
 
 	return (
-		<div className="flex justify-center items-center h-screen">
+		<div key={key} className="flex justify-center items-center h-screen">
 			<div className="flex flex-col items-center gap-4 w-1/3 p-4 border border-gray-300 rounded-lg shadow-md">
 				<h1 className="text-4xl text-center">
 					Welcome to Red Tetris, {username}
@@ -151,7 +173,7 @@ export default function Home() {
 							value={newUsername}
 							onChange={(e) => setNewUsername(e.target.value)}
 							onBlur={() => setIsChangingUsername(false)}
-              maxLength={30}
+							maxLength={30}
 						/>
 					) : (
 						<Input
