@@ -25,7 +25,7 @@ export class Player extends EventEmitter{
   disconnect() {
     if (this.intervalId) {
       clearInterval(this.intervalId)
-      this.reset()
+      this.intervalId = null
     }
     if (this.room == null) {
       return

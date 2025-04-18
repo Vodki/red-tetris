@@ -35,7 +35,7 @@ export function newRandomTetromino() {
   return clone;
 }
 
-const AllTetrominoes = [
+export const AllTetrominoes = [
     new Piece('I',
       [
         [{x:0,y:-1}, {x:0,y:0}, {x:0,y:1}, {x:0,y:2}],
