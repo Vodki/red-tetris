@@ -1,8 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { Game, roomExists } from '../game/Room.js'
-import { newRandomTetromino } from "../game/Tetromino.js"
 
-// Mock dependencies
 vi.mock('./Tetromino.js', () => ({
   newRandomTetromino: vi.fn(() => ({ shape: [[1]], color: 'red' }))
 }))
@@ -55,7 +53,6 @@ describe('Game', () => {
       expect(game.name).toBe('test-room')
       expect(game.host).toBe('host-id')
       expect(game.isRunning).toBe(false)
-    //   expect(newRandomTetromino).toHaveBeenCalledTimes(2)
       expect(game.tetrominos).toHaveLength(2)
     })
   })

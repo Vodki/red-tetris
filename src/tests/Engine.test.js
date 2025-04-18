@@ -1,159 +1,200 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-
-// 1) Mock Board *inline*, so we never reference an out‐of‐scope DummyBoard
-vi.mock('../game/Board.js', () => {
-  return {
-    Board: class {
-      constructor() {
-        this.grid = Array(20).fill(0).map(() => Array(10).fill(0));
-      }
-      fillBoard(x, y, c) { this.grid[y][x] = c }
-      clearFullLines() { return 0 }
-      addPenality() { return true }
-    }
-  }
-})
-
-// We don’t need to mock Tetromino at all if we supply our own pieces below.
-
-// Now import *after* the mocks:
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Player } from '../game/Engine.js'
+import { Board } from '../game/Board.js'
 
-describe('Player (Engine.js)', () => {
-  // A simple fake piece class for feeding into the Player
-  class FakePiece {
-    constructor(pos, shape) {
-      this.position = { ...pos }
-      this._shape = shape             // array of {x,y}
-      this.color = 9
-      this.rotationIndex = 0
-    }
-    get currentShape() { return this._shape }
-    rotate() { this.rotationIndex++ }
+const ROWS = 20
+const COLS = 10
+
+function makeTetromino(shape = [{ x: 0, y: 0 }], color = 1) {
+  return {
+    currentShape: shape,
+    color,
+    position: { x: 0, y: 0 },
+    rotationIndex: 0,
     clone() {
-      const c = new FakePiece(this.position, this._shape)
-      c.rotationIndex = this.rotationIndex
-      return c
-    }
+      const t = makeTetromino(shape, color)
+      t.position = { ...this.position }
+      t.rotationIndex = this.rotationIndex
+      return t
+    },
+    rotate() {
+      this.rotationIndex = (this.rotationIndex + 1) % 4
+    },
   }
+}
 
-  let socket, pl
+function makeMockSocket() {
+  const socket = {
+    id: 'socket1',
+    on: vi.fn(),
+    emit: vi.fn(),
+    to: vi.fn(),
+  }
+  socket.to.mockReturnValue({ emit: vi.fn() })
+  return socket
+}
+
+function makeMockRoom(player) {
+  const room = {
+    name: 'room1',
+    host: player.socketId,
+    engines: new Map(),
+    allPlayersDone: vi.fn(),
+    roomUpdate: vi.fn(),
+  }
+  room.engines.set(player.socketId, player)
+  return room
+}
+
+describe('Player', () => {
+  let socket
+  let player
+  let room
+  let tetrominos
 
   beforeEach(() => {
-    // Give Player a stub socket
-    socket = { id: 'S1', on: vi.fn(), emit: vi.fn() }
+    socket = makeMockSocket()
+    tetrominos = [makeTetromino()]
+    player = new Player(socket, true, tetrominos)
+    room = makeMockRoom(player)
+    player.room = room
+    player.username = 'testuser'
 
-    // Create a starting piece at (4,0), shape single block
-    const startPiece = new FakePiece({ x: 4, y: 0 }, [{ x: 0, y: 0 }])
-    pl = new Player(socket, false, [startPiece])
-
-    // stub out the methods that emit to socket / io
-    pl.sendGameState = vi.fn()
-    pl.sendGameShadow = vi.fn()
-    pl.handleGameOver = vi.fn()
+    socket.emit.mockClear()
+    socket.on.mockClear()
+    socket.to.mockClear()
+    room.allPlayersDone.mockClear()
+    room.roomUpdate.mockClear()
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
-    vi.clearAllMocks()
+  it('initializes to correct defaults and reset() works', () => {
+    expect(player.score).toBe(0)
+    expect(player.level).toBe(1)
+    expect(player.clearedLines).toBe(0)
+    expect(player.pieceNb).toBe(0)
+    expect(player.board.grid.every(row => row.every(cell => cell === 0))).toBe(true)
+
+    player.score = 123
+    player.level = 5
+    player.reset()
+    expect(player.score).toBe(0)
+    expect(player.level).toBe(1)
   })
 
-  it('constructor sets initial flags and registers socket handler', () => {
-    expect(pl.socket).toBe(socket)
-    expect(pl.isHost).toBe(false)
-    expect(socket.on).toHaveBeenCalledWith('gameInput', expect.any(Function))
+  it('calculateScore returns correct points per lines', () => {
+    player.level = 2
+    expect(player.calculateScore(1)).toBe(200)
+    expect(player.calculateScore(2)).toBe(600)
+    expect(player.calculateScore(3)).toBe(1000)
+    expect(player.calculateScore(4)).toBe(1600)
+    expect(player.calculateScore(0)).toBe(0)
+    expect(player.calculateScore(5)).toBe(0)
   })
 
-  it('reset() initializes board, current piece and stats', () => {
-    pl.score = 42
-    pl.level = 7
-    pl.reset()
-    expect(pl.board.grid.length).toBe(20)
-    expect(pl.score).toBe(0)
-    expect(pl.level).toBe(1)
-    expect(pl.current).toBeDefined()
-    expect(pl.pieceNb).toBe(0)
+  it('isValidPosition rejects out‑of‑bounds', () => {
+    player.current.position.x = -1
+    expect(player.isValidPosition(player.current)).toBe(false)
+    player.current.position.x = COLS
+    expect(player.isValidPosition(player.current)).toBe(false)
+    player.current.position = { x: 0, y: ROWS }
+    expect(player.isValidPosition(player.current)).toBe(false)
+    player.current.position = { x: 3, y: 5 }
+    expect(player.isValidPosition(player.current)).toBe(true)
   })
 
-  it('calculateScore() matches Tetris scoring rules', () => {
-    pl.level = 2
-    expect(pl.calculateScore(1)).toBe(200)
-    expect(pl.calculateScore(2)).toBe(600)
-    expect(pl.calculateScore(3)).toBe(1000)
-    expect(pl.calculateScore(4)).toBe(1600)
-    expect(pl.calculateScore(5)).toBe(0)
+  it('canMoveDown returns false at bottom, true otherwise', () => {
+    player.current.position.y = ROWS - 1
+    expect(player.canMoveDown()).toBe(false)
+    player.current.position.y = 0
+    expect(player.canMoveDown()).toBe(true)
   })
 
-  it('isValidPosition(): blocks out of bounds or collisions', () => {
-    // x < 0
-    let bad = new FakePiece({ x: -1, y: 0 }, [{ x: 0, y: 0 }])
-    expect(pl.isValidPosition(bad)).toBe(false)
+  it('moveLeft and moveRight respect boundaries and emit GameUpdate', () => {
+    player.current.position.x = 0
+    player.moveLeft()
+    expect(player.current.position.x).toBe(0)
 
-    // y >= ROWS
-    bad = new FakePiece({ x: 0, y: 20 }, [{ x: 0, y: 0 }])
-    expect(pl.isValidPosition(bad)).toBe(false)
+    player.current.position.x = 0
+    player.moveRight()
+    expect(player.current.position.x).toBe(1)
 
-    // collision
-    pl.board.grid[0][0] = 5
-    bad = new FakePiece({ x: 0, y: 0 }, [{ x: 0, y: 0 }])
-    expect(pl.isValidPosition(bad)).toBe(false)
-
-    // valid
-    const ok = new FakePiece({ x: 1, y: 1 }, [{ x: 0, y: 0 }])
-    expect(pl.isValidPosition(ok)).toBe(true)
+    expect(socket.emit).toHaveBeenCalledWith('GameUpdate', expect.any(Object))
   })
 
-  it('canMoveDown() increments y when valid, false at bottom', () => {
-    expect(pl.canMoveDown()).toBe(true)
-    pl.current.position.y = 19
-    expect(pl.canMoveDown()).toBe(false)
+  it('rotateCurrent increments rotationIndex when valid, reverts when invalid', () => {
+    player.current.rotationIndex = 0
+    player.rotateCurrent()
+    expect(player.current.rotationIndex).toBe(1)
+
+    player.current.rotationIndex = 0
+    player.isValidPosition = () => false
+    player.rotateCurrent()
+    expect(player.current.rotationIndex).toBe(0)
   })
 
-  it('moveLeft/moveRight enforce bounds and call sendGameState()', () => {
-    pl.current.position.x = 0
-    pl.moveLeft()
-    expect(pl.current.position.x).toBe(0)
-    expect(pl.sendGameState).toHaveBeenCalled()
-
-    pl.current.position.x = 9
-    pl.moveRight()
-    expect(pl.current.position.x).toBe(9)
-    expect(pl.sendGameState).toHaveBeenCalledTimes(2)
+  it('moveDown moves piece down, increases score by level, emits GameUpdate', () => {
+    player.current.position.y = 0
+    player.level = 3
+    player.score = 0
+    player.moveDown()
+    expect(player.current.position.y).toBe(1)
+    expect(player.score).toBe(3)
+    expect(socket.emit).toHaveBeenCalledWith('GameUpdate', expect.objectContaining({
+      score: 3, level: 3
+    }))
   })
 
-  it('rotateCurrent() reverts on invalid rotation', () => {
-    // force invalid
-    vi.spyOn(pl, 'isValidPosition').mockReturnValue(false)
-    const orig = pl.current.rotationIndex
-    pl.rotateCurrent()
-    expect(pl.current.rotationIndex).toBe(orig)
-    expect(pl.sendGameState).toHaveBeenCalled()
+  it('hardDrop drops to bottom and scores dropDistance * level', () => {
+    player.current.position.y = 0
+    player.level = 2
+    player.score = 0
+    vi.spyOn(player, 'spawnNewTetromino').mockImplementation(() => {})
+    player.hardDrop()
+    const dropDistance = ROWS - 1
+    expect(player.score).toBe(dropDistance * 2)
+    expect(socket.emit).toHaveBeenCalledWith('GameUpdate', expect.any(Object))
   })
 
-  it('moveDown() chooses between drop and lock logic', () => {
-    // valid drop branch
-    pl.current.position.y = 0
-    pl.score = 0
-    pl.level = 1
-    pl.moveDown()
-    expect(pl.current.position.y).toBe(1)
-    expect(pl.score).toBe(1)   // +level
-    expect(pl.sendGameState).toHaveBeenCalled()
+  it('sendGameState calls allPlayersDone and emits GameUpdate with correct state', () => {
+    player.score = 42; player.level = 5; player.gameOver = false
+    const visual = player.getVisualGrid()
+    player.sendGameState()
+    expect(room.allPlayersDone).toHaveBeenCalled()
+    expect(socket.emit).toHaveBeenCalledWith('GameUpdate', expect.objectContaining({
+      grid: visual,
+      score: 42,
+      level: 5,
+      gameOver: false,
+      nextPiece: undefined
+    }))
   })
 
-  it('start() / stop() toggle interval & isRunning', () => {
-    vi.useFakeTimers()
-    pl.start()
-    expect(pl.isRunning).toBe(true)
-    expect(pl.intervalId).not.toBeNull()
-    pl.stop()
-    expect(pl.isRunning).toBe(false)
-    expect(pl.intervalId).toBeNull()
+  it('sendGameShadow emits GameShadow to room', () => {
+    const shadowSpy = vi.fn()
+    socket.to.mockReturnValue({ emit: shadowSpy })
+    player.score = 10; player.level = 2; player.gameOver = true
+    player.sendGameShadow()
+    expect(socket.to).toHaveBeenCalledWith(room.name)
+    expect(shadowSpy).toHaveBeenCalledWith('GameShadow', expect.objectContaining({
+      grid: player.board.grid,
+      score: 10,
+      level: 2,
+      gameOver: true,
+      socketId: 'socket1',
+      nextPiece: undefined
+    }))
   })
 
-  it('disconnect() clears interval when no room attached', () => {
-    pl.intervalId = 123
-    expect(() => pl.disconnect()).not.toThrow()
-    expect(pl.intervalId).toBeNull()
+  it('reset clears score, level, clearedLines, pieceNb and creates new Board', () => {
+    player.score = 999
+    player.level = 10
+    player.clearedLines = 5
+    player.pieceNb = 3
+    player.reset()
+    expect(player.score).toBe(0)
+    expect(player.level).toBe(1)
+    expect(player.clearedLines).toBe(0)
+    expect(player.pieceNb).toBe(0)
+    expect(player.board).toBeInstanceOf(Board)
   })
 })

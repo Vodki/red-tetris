@@ -123,7 +123,15 @@ const Tetris = ({ room, username }) => {
 						<p>Waiting for the host to start the game.</p>
 					)}
 				</div>
-				<Grid grid={currentGrid} isOpponent={false} />
+				<div>
+					<Grid grid={currentGrid} isOpponent={false} />
+					{socket &&
+						<h2 className="text-center font-semibold">{gameOver.get(socket.id)
+							? "Game Over"
+							: ""}
+						</h2>
+					}
+				</div>
 				<div className="grid-rows items-center">
 					{players
 						?.filter((player) => player.socketId !== socket.id)

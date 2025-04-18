@@ -37,14 +37,11 @@ describe('Piece', () => {
     const p = new Piece('Z', rotations, pos, 'green')
     p.rotate()
     const q = p.clone()
-    // same values...
     expect(q.id).toBe(p.id)
     expect(q.color).toBe(p.color)
     expect(q.rotationIndex).toBe(p.rotationIndex)
-    // but not the same references
     expect(q.rotations).not.toBe(p.rotations)
     expect(q.position).not.toBe(p.position)
-    // modifying clone does not affect original
     q.position.x = 99
     expect(p.position.x).toBe(5)
   })
@@ -54,7 +51,6 @@ describe('newRandomTetromino', () => {
   it('returns one of the defined tetrominoes, with a large rotationIndex offset', () => {
     const t = newRandomTetromino()
     expect(AllTetrominoes.map(o => o.id)).toContain(t.id)
-    // rotationIndex was set to original.rotations.length * 1000
     const original = AllTetrominoes.find(o => o.id === t.id)
     expect(t.rotationIndex).toBe(original.rotations.length * 1000)
   })

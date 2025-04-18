@@ -88,11 +88,13 @@ export const SocketProvider = ({ children }) => {
 				return next;
 			});
 
+			if (data.score) {
 			setScores((prev) => {
 				const next = new Map(prev);
 				next.set(data.socketId, data.score);
 				return next;
 			});
+		}
 
 			setGameOver((prev) => {
 				const next = new Map(prev);

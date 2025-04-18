@@ -1,182 +1,317 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createServer } from 'node:http';
-import { Server } from 'socket.io';
 import { io as Client } from 'socket.io-client';
-import { Game } from './game/Room.js';
-import { Player } from './game/Engine.js';
-import { roomExists } from './game/Room.js';
+import { createServerInstance } from '../server.js';
+import * as RoomModule from '../game/Room.js';
+import * as EngineModule from '../game/Engine.js';
 
-// Enhanced mocks with constructor parameter handling
-vi.mock('./game/Room.js', () => ({
-  roomExists: vi.fn(),
-  Game: vi.fn().mockImplementation((name, hostId, io) => ({
-    name,
-    host: hostId,
-    io,
-    serializePlayers: vi.fn(() => []),
-    engines: new Map(),
-    tetrominos: [],
-    startGames: vi.fn(),
-    isRunning: false,
-  })),
+vi.mock('../game/Room.js', () => ({
+    Game: vi.fn().mockImplementation((name, hostId, io) => ({
+        name,
+        host: hostId,
+        io,
+        engines: new Map(),
+        tetrominos: [],
+        serializePlayers: vi.fn().mockReturnValue([]),
+        startGames: vi.fn(),
+        isRunning: false,
+    })),
+    roomExists: vi.fn(),
 }));
 
-vi.mock('./game/Engine.js', () => ({
-  Player: vi.fn().mockImplementation((socket, isHost, tetrominos) => ({
-    room: null,
-    socketId: socket.id,
-    username: '',
-    isHost,
-    tetrominos,
-    disconnect: vi.fn(),
-  })),
+vi.mock('../game/Engine.js', () => ({
+    Player: vi.fn().mockImplementation((socket, isHost, tetrominos) => ({
+        socket,
+        socketId: socket.id,
+        isHost,
+        tetrominos,
+        room: null,
+        username: '',
+        disconnect: vi.fn(),
+    })),
 }));
 
-describe('Socket Server', () => {
-  let io, clientSocket, httpServer, port;
-  
-  beforeEach(async () => {
-    // Reset all mocks
-    vi.clearAllMocks();
-    
-    // Create HTTP server
-    httpServer = createServer();
-    await new Promise(resolve => httpServer.listen(0, resolve));
-    port = httpServer.address().port;
+describe('server.js', () => {
+    let server, client1, client2, port;
+    const ROOM = 'room1';
+    const CID = 'corr-42';
 
-    // Create Socket.IO server
-    io = new Server(httpServer);
+    const roomExistsMock = vi.mocked(RoomModule.roomExists);
+    const GameMock = vi.mocked(RoomModule.Game);
+    const PlayerMock = vi.mocked(EngineModule.Player);
 
-    // Mock server handlers to match actual server logic
-    const rooms = new Map();
-    const players = new Map();
-    const engines = new Map();
+    beforeEach(async () => {
+        server = await createServerInstance();
+        await new Promise((r) => server.httpServer.listen(0, r));
+        port = server.httpServer.address().port;
 
-    io.on('connection', (socket) => {
-      // Actual server logic from server.js
-      socket.on('setUsername', (username) => {
-        players.set(socket.id, username);
-      });
+        client1 = Client(`http://localhost:${port}`);
+        await new Promise((r) => client1.on('connect', r));
 
-      socket.on('newRoom', async (data) => {
-        try {
-          const exists = await roomExists(io, data.roomName);
-          
-          if (!exists) {
-            const room = new Game(data.roomName, socket.id, io);
-            const engine = new Player(socket, true, room.tetrominos);
-            engine.username = players.get(socket.id);
-            room.engines.set(socket.id, engine);
-            rooms.set(data.roomName, room);
-            engines.set(socket.id, engine);
-            socket.join(data.roomName);
-            
-            socket.emit('newRoomResponse', {
-              correlationId: data.correlationId,
-              canCreate: true,
-              message: `Room ${data.roomName} created successfully`
+        server.players.clear();
+        server.rooms.clear();
+        server.engines.clear();
+        roomExistsMock.mockReset();
+        GameMock.mockClear();
+        PlayerMock.mockClear();
+    });
+
+    afterEach(async () => {
+        client1.close();
+        if (client2) client2.close();
+        await new Promise((r) => server.io.close(r));
+        await new Promise((r) => server.httpServer.close(r));
+        process.removeAllListeners('unhandledRejection')
+        process.removeAllListeners('uncaughtException')
+    });
+
+    it('setUsername stores the username in state.players', async () => {
+        client1.emit('setUsername', 'alice');
+        await new Promise((r) => setTimeout(r, 20));
+        expect(server.players.get(client1.id)).toBe('alice');
+    });
+
+    describe('newRoom', () => {
+        it('success when roomExists → false', async () => {
+            roomExistsMock.mockResolvedValueOnce(false);
+
+            client1.emit('setUsername', 'alice');
+
+            const res = await new Promise((r) => {
+                client1.emit('newRoom', { roomName: ROOM, correlationId: CID });
+                client1.on('newRoomResponse', r);
             });
-          } else {
-            socket.emit('newRoomResponse', {
-              correlationId: data.correlationId,
-              canCreate: false,
-              message: `Room ${data.roomName} already exists`
+
+            expect(res).toEqual({
+                correlationId: CID,
+                canCreate: true,
+                message: `Room ${ROOM} created successfully`,
             });
-          }
-        } catch (error) {
-          socket.emit('newRoomResponse', {
-            correlationId: data.correlationId,
-            error: error.message
-          });
-        }
-      });
 
-      socket.on('disconnect', () => {
-        const engine = engines.get(socket.id);
-        if (engine) engine.disconnect();
-        players.delete(socket.id);
-        engines.delete(socket.id);
-      });
-    });
-
-    // Create test client
-    clientSocket = Client(`http://localhost:${port}`);
-    await new Promise(resolve => clientSocket.on('connect', resolve));
-  }, 10000);
-
-  afterEach(() => {
-    clientSocket?.close();
-    io?.close();
-    httpServer?.close();
-  });
-
-  describe('setUsername', () => {
-    it('should store username', async () => {
-      clientSocket.emit('setUsername', 'testUser');
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Verify using direct access to server-side maps
-      const sockets = await io.fetchSockets();
-      expect(sockets[0].id).toBe(clientSocket.id);
-    });
-  });
-
-  describe('newRoom', () => {
-    it('should create new room when available', async () => {
-      roomExists.mockResolvedValue(false);
-      
-      const response = await new Promise(resolve => {
-        clientSocket.emit('newRoom', { 
-          roomName: 'test-room', 
-          correlationId: '123' 
+            expect(server.rooms.has(ROOM)).toBe(true);
+            expect(server.engines.size).toBe(1);
+            expect(GameMock).toHaveBeenCalledOnce();
+            expect(PlayerMock).toHaveBeenCalledOnce();
         });
-        clientSocket.on('newRoomResponse', resolve);
-      });
 
-      expect(response).toMatchObject({
-        correlationId: '123',
-        canCreate: true
-      });
-    });
+        it('failure when roomExists → true', async () => {
+            roomExistsMock.mockResolvedValueOnce(true);
+            client1.emit('setUsername', 'bob');
 
-    it('should reject duplicate room', async () => {
-      roomExists.mockResolvedValue(true);
-      
-      const response = await new Promise(resolve => {
-        clientSocket.emit('newRoom', { 
-          roomName: 'existing-room', 
-          correlationId: '456' 
+            const res = await new Promise((r) => {
+                client1.emit('newRoom', { roomName: ROOM, correlationId: CID });
+                client1.on('newRoomResponse', r);
+            });
+
+            expect(res).toEqual({
+                correlationId: CID,
+                canCreate: false,
+                message: `Room ${ROOM} already exist`,
+            });
+            expect(server.rooms.has(ROOM)).toBe(false);
         });
-        clientSocket.on('newRoomResponse', resolve);
-      });
 
-      expect(response).toMatchObject({
-        correlationId: '456',
-        canCreate: false
-      });
+        it('error in roomExists() is caught and forwarded', async () => {
+            roomExistsMock.mockRejectedValueOnce(new Error('boom!'));
+            client1.emit('setUsername', 'charlie');
+
+            const res = await new Promise((r) => {
+                client1.emit('newRoom', { roomName: ROOM, correlationId: CID });
+                client1.on('newRoomResponse', r);
+            });
+
+            expect(res).toEqual({
+                correlationId: CID,
+                error: 'boom!',
+            });
+            expect(server.rooms.size).toBe(0);
+        });
     });
-  });
 
-  describe('disconnect', () => {
-    it('should cleanup resources on disconnect', async () => {
-      clientSocket.emit('setUsername', 'testUser');
-      
-      // Get server-side socket reference
-      const sockets = await io.fetchSockets();
-      const serverSocket = sockets[0];
+    describe('leaveRoom', () => {
+        it('no‐op when room not in state.rooms', async () => {
+            client1.emit('leaveRoom', ROOM);
+            await new Promise((r) => setTimeout(r, 20));
+        });
 
-      // Verify initial state
-      expect(serverSocket).toBeDefined();
+        it('calls engine.disconnect() when in a room', async () => {
+            roomExistsMock.mockResolvedValueOnce(false);
+            client1.emit('setUsername', 'dave');
+            await new Promise((r) => {
+                client1.emit('newRoom', { roomName: ROOM, correlationId: CID });
+                client1.on('newRoomResponse', r);
+            });
 
-      // Disconnect client
-      await new Promise(resolve => {
-        serverSocket.on('disconnect', resolve);
-        clientSocket.close();
-      });
+            const engineInstance = PlayerMock.mock.results[0].value;
+            client1.emit('leaveRoom', ROOM);
+            await new Promise((r) => setTimeout(r, 20));
 
-      // Verify cleanup
-      const newSockets = await io.fetchSockets();
-      expect(newSockets.length).toBe(0);
+            expect(engineInstance.disconnect).toHaveBeenCalled();
+        });
     });
-  });
+
+    describe('disconnect (socket)', () => {
+        it('clears state.players and calls engine.disconnect if any', async () => {
+            roomExistsMock.mockResolvedValueOnce(false);
+            client1.emit('setUsername', 'ellen');
+            await new Promise((r) => {
+                client1.emit('newRoom', { roomName: ROOM, correlationId: CID });
+                client1.on('newRoomResponse', r);
+            });
+            const engineInstance = PlayerMock.mock.results[0].value;
+
+            client1.close();
+            await new Promise((r) => setTimeout(r, 50));
+
+            expect(server.players.has(client1.id)).toBe(false);
+            expect(engineInstance.disconnect).toHaveBeenCalled();
+        });
+    });
+
+    describe('start', () => {
+        it('emits sendError if room not found', async () => {
+            const err = await new Promise((r) => {
+                client1.once('sendError', r);
+                client1.emit('start', ROOM);
+            });
+            expect(err).toBe('Room not found');
+        });
+
+        it('does nothing if not the host', async () => {
+            roomExistsMock.mockResolvedValueOnce(false);
+            client1.emit('setUsername', 'host');
+            await new Promise((r) => {
+                client1.emit('newRoom', { roomName: ROOM, correlationId: CID });
+                client1.on('newRoomResponse', r);
+            });
+
+            client2 = Client(`http://localhost:${port}`);
+            await new Promise((r) => client2.on('connect', r));
+            client2.emit('start', ROOM);
+            await new Promise((r) => setTimeout(r, 20));
+
+            const gameInstance = GameMock.mock.results[0].value;
+            expect(gameInstance.startGames).not.toHaveBeenCalled();
+        });
+
+        it('calls startGames when host invokes start', async () => {
+            roomExistsMock.mockResolvedValueOnce(false);
+            client1.emit('setUsername', 'host2');
+            await new Promise((r) => {
+                client1.emit('newRoom', { roomName: ROOM, correlationId: CID });
+                client1.on('newRoomResponse', r);
+            });
+
+            client1.emit('start', ROOM);
+            await new Promise((r) => setTimeout(r, 20));
+
+            const gameInstance = GameMock.mock.results[0].value;
+            expect(gameInstance.startGames).toHaveBeenCalled();
+        });
+    });
+
+    describe('joinRoom', () => {
+        beforeEach(async () => {
+            roomExistsMock.mockResolvedValueOnce(false);
+            client1.emit('setUsername', 'host3');
+            await new Promise((r) => {
+                client1.emit('newRoom', { roomName: ROOM, correlationId: CID });
+                client1.on('newRoomResponse', r);
+            });
+        });
+
+        it('fails when roomExists → false', async () => {
+            roomExistsMock.mockResolvedValueOnce(false);
+            client2 = Client(`http://localhost:${port}`);
+            await new Promise((r) => client2.on('connect', r));
+            client2.emit('setUsername', 'joey');
+
+            const res = await new Promise((r) => {
+                client2.emit('joinRoom', { roomName: 'nope', correlationId: CID });
+                client2.on('joinRoomResponse', r);
+            });
+            expect(res).toEqual({
+                correlationId: CID,
+                canJoin: false,
+                message: "Room doesn't exist",
+            });
+        });
+
+        it('fails when room is full', async () => {
+            const room = server.rooms.get(ROOM);
+            room.engines.clear();
+            ['a', 'b', 'c', 'd'].forEach((id) => room.engines.set(id, {}));
+
+            roomExistsMock.mockResolvedValueOnce(true);
+            client2 = Client(`http://localhost:${port}`);
+            await new Promise((r) => client2.on('connect', r));
+            client2.emit('setUsername', 'max');
+
+            const res = await new Promise((r) => {
+                client2.emit('joinRoom', { roomName: ROOM, correlationId: CID });
+                client2.on('joinRoomResponse', r);
+            });
+            expect(res).toEqual({
+                correlationId: CID,
+                canJoin: false,
+                message: "Room is full",
+            });
+        });
+
+        it('fails when game already running', async () => {
+            const room = server.rooms.get(ROOM);
+            room.isRunning = true;
+            roomExistsMock.mockResolvedValueOnce(true);
+
+            client2 = Client(`http://localhost:${port}`);
+            await new Promise((r) => client2.on('connect', r));
+            client2.emit('setUsername', 'peter');
+
+            const res = await new Promise((r) => {
+                client2.emit('joinRoom', { roomName: ROOM, correlationId: CID });
+                client2.on('joinRoomResponse', r);
+            });
+            expect(res).toEqual({
+                correlationId: CID,
+                canJoin: false,
+                message: "A game is running, please wait for the end",
+            });
+        });
+
+        it('succeeds when room exists and not full/running', async () => {
+            roomExistsMock.mockResolvedValueOnce(true);
+            const room = server.rooms.get(ROOM);
+            room.isRunning = false;
+            room.engines.clear();
+
+            client2 = Client(`http://localhost:${port}`);
+            await new Promise((r) => client2.on('connect', r));
+            client2.emit('setUsername', 'anna');
+
+            const res = await new Promise((r) => {
+                client2.emit('joinRoom', { roomName: ROOM, correlationId: CID });
+                client2.on('joinRoomResponse', r);
+            });
+            expect(res).toEqual({
+                correlationId: CID,
+                canJoin: true,
+            });
+            expect(server.engines.size).toBe(2);
+        });
+
+        it('forwards errors thrown by roomExists()', async () => {
+            roomExistsMock.mockRejectedValueOnce(new Error('ouch'));
+            client2 = Client(`http://localhost:${port}`);
+            await new Promise((r) => client2.on('connect', r));
+            client2.emit('setUsername', 'errorCase');
+
+            const res = await new Promise((r) => {
+                client2.emit('joinRoom', { roomName: ROOM, correlationId: CID });
+                client2.on('joinRoomResponse', r);
+            });
+            expect(res).toEqual({
+                correlationId: CID,
+                error: 'ouch',
+            });
+        });
+    });
 });

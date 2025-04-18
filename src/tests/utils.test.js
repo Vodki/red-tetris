@@ -7,7 +7,6 @@ describe('cn()', () => {
   })
 
   it('merges Tailwind utility classes, keeping the last wins', () => {
-    // p-2 then p-4 → p-4 only
     const result = cn('p-2', 'p-4', 'bg-red-500', 'bg-red-600')
     expect(result.split(' ').sort()).toEqual(
       ['bg-red-600', 'p-4'].sort()

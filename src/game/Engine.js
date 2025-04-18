@@ -1,4 +1,3 @@
-import { EventEmitter } from 'events';
 import { Board } from './Board.js';
 import { newRandomTetromino } from './Tetromino.js';
 
@@ -6,9 +5,8 @@ const ROWS = 20;
 const COLS = 10;
 const INITIAL_SPEED = 500;
 
-export class Player extends EventEmitter{
+export class Player{
   constructor(socket, isHost, tetrominos) {
-    super();
     this.tetrominos = tetrominos
     this.reset()
     this.socket = socket;
@@ -30,12 +28,13 @@ export class Player extends EventEmitter{
     if (this.room == null) {
       return
     } else if (this.room.engines.size == 1) {
+      this.socket.leave(this.room.name)
       this.room = null;
       return;
-    } else if (this.room.host == this.socketId) {
+    } else if (this.room.host != null && this.room.host == this.socketId) {
       const newHostFound = false
       this.room.engines.forEach((engine) => {
-        if (!newHostFound && engine.socketId != engine.room.host) {
+        if (engine.room != null && (!newHostFound && engine.socketId != engine.room.host)) {
           engine.room.host = engine.socketId
           this.isHost = true
         }
@@ -43,6 +42,7 @@ export class Player extends EventEmitter{
     }
     this.room.engines.delete(this.socketId)
     this.room.roomUpdate()
+    this.socket.leave(this.room.name)
   }
 
   sendPenality(linesNb) {
@@ -127,6 +127,7 @@ export class Player extends EventEmitter{
       this.spawnNewTetromino();
     }
     this.sendGameState();
+    this.sendGameShadow();
   }
 
   lockCurrent() {
@@ -139,7 +140,7 @@ export class Player extends EventEmitter{
       }
     }
 
-    this.sendGameShadow();
+    
   }
 
   spawnNewTetromino() {
@@ -286,7 +287,8 @@ export class Player extends EventEmitter{
       socketId: this.socketId,
     };
 
-    this.socket.to(this.room.name).emit('GameShadow', state);
+    //this.socket.to(this.room.name).emit('GameShadow', state);
+    this.room.io.to(this.room.name).emit('GameShadow', state);
   }
 
   getVisualGrid() {
@@ -324,6 +326,7 @@ export class Player extends EventEmitter{
 
   handleGameOver() {
     this.stop();
+    this.sendGameShadow();
     this.socket.emit('game-over', {
       username: this.username,
       score: this.score

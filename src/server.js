@@ -10,17 +10,20 @@ const port = 3000;
 const app = next({ dev, hostname, port });
 const handler = app.getRequestHandler();
 
-app.prepare().then(() => {
+export async function createServerInstance() {
+  await app.prepare();
   const httpServer = createServer(handler);
-  const rooms = new Map();
-  const players = new Map();
-  const engines = new Map();
   const io = new Server(httpServer);
+  const state = {
+    rooms: new Map(),
+    players: new Map(),
+    engines: new Map()
+  };
 
   io.on("connection", (socket) => {
 
     socket.on('setUsername', (data) => {
-      players.set(socket.id, data)
+      state.players.set(socket.id, data)
     })
 
     socket.on('newRoom', async (data) => {
@@ -30,11 +33,11 @@ app.prepare().then(() => {
         if (result == false) {
           const room = new Game(data.roomName, socket.id, io)
           const engine = new Player(socket, true, room.tetrominos)
-          engines.set(socket.id, engine)
+          state.engines.set(socket.id, engine)
           engine.room = room
-          engine.username = players.get(socket.id)
+          engine.username = state.players.get(socket.id)
           room.engines.set(engine.socketId, engine)
-          rooms.set(room.name, room)
+          state.rooms.set(room.name, room)
           socket.join(data.roomName)
           socket.emit('newRoomResponse', {
             correlationId: data.correlationId,
@@ -55,23 +58,21 @@ app.prepare().then(() => {
           error: error.message
         });
       }
-    
-      
     })
 
     socket.on('leaveRoom', (data) => {
-      const room = rooms.get(data)
+      const room = state.rooms.get(data)
       if (room == null) {
         return;
       } else {
-        const engine = engines.get(socket.id)
+        const engine = state.engines.get(socket.id)
         engine.disconnect()
       }
     })
 
     socket.on('disconnect', () => {
-      players.delete(socket.id)
-      const engine = engines.get(socket.id)
+      state.players.delete(socket.id)
+      const engine = state.engines.get(socket.id)
       if (engine == null) {
         return;
       } else {
@@ -80,7 +81,7 @@ app.prepare().then(() => {
     })
 
     socket.on('start', (data) => {
-      const room = rooms.get(data)
+      const room = state.rooms.get(data)
       if (!room || !room.host) {
         socket.emit('sendError', 'Room not found')
         return;
@@ -100,50 +101,55 @@ app.prepare().then(() => {
             canJoin: false,
             message: "Room doesn't exist",
           })
-        } else if(rooms.get(data.roomName).engines.size == 4) {
+        } else if (state.rooms.get(data.roomName).engines.size == 4) {
           socket.emit('joinRoomResponse', {
             correlationId: data.correlationId,
             canJoin: false,
             message: "Room is full",
           })
-        } else if (rooms.get(data.roomName).isRunning) {
+        } else if (state.rooms.get(data.roomName).isRunning) {
           socket.emit('joinRoomResponse', {
             correlationId: data.correlationId,
             canJoin: false,
             message: "A game is running, please wait for the end",
           })
         } else {
-          const room = rooms.get(data.roomName)
+          const room = state.rooms.get(data.roomName)
           const engine = new Player(socket, false, room.tetrominos)
-          engine.username = players.get(socket.id)
+          engine.username = state.players.get(socket.id)
           room.engines.set(socket.id, engine)
           engine.room = room
-          engines.set(socket.id, engine)
+          state.engines.set(socket.id, engine)
           socket.join(data.roomName)
           socket.emit('joinRoomResponse', {
             correlationId: data.correlationId,
             canJoin: true,
           })
-          socket.to(data.roomName).emit(`${players.get(socket.id)} joins the game`)
+          socket.to(data.roomName).emit(`${state.players.get(socket.id)} joins the game`)
           io.to(data.roomName).emit('roomUpdate', room.serializePlayers())
 
         }
-     } catch (error) {
-      socket.emit('joinRoomResponse', {
-        correlationId: data.correlationId,
-        error: error.message,
-      })
-     }
-  })
-  
+      } catch (error) {
+        socket.emit('joinRoomResponse', {
+          correlationId: data.correlationId,
+          error: error.message,
+        })
+      }
+    })
+
   });
 
-  httpServer
-    .once("error", (err) => {
-      console.error(err);
-      process.exit(1);
-    })
-    .listen(port, () => {
+  return {
+    httpServer,
+    io,
+    ...state
+  };
+};
+
+if (process.env.NODE_TEST !== "true") {
+  createServerInstance().then(({ httpServer }) => {
+    httpServer.listen(port, () => {
       console.log(`> Ready on http://${hostname}:${port}`);
     });
-});
+  });
+}
