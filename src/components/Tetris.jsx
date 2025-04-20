@@ -164,8 +164,8 @@ const Tetris = ({ room, username }) => {
 										{scores.get(player.socketId) ?? "0"}{" "}
 										{gameOver.get(player.socketId)
 											? winner && winner === player.socketId
-												? " - You won"
-												: " - You lost"
+												? " - Won"
+												: " - Lost"
 											: ""}
 									</p>
 								</div>
