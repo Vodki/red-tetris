@@ -23,6 +23,8 @@ const Tetris = ({ room, username }) => {
 		grids,
 		scores,
 		gameOver,
+		winner,
+		setWinner,
 	} = useSocket();
 	const router = useRouter();
 
@@ -58,6 +60,10 @@ const Tetris = ({ room, username }) => {
 		},
 		[sendMessage, gameOn]
 	);
+
+	useEffect(() => {
+		setWinner("");
+	}, [score]);
 
 	useEffect(() => {
 		document.addEventListener("keydown", handleKeyDown);
@@ -120,17 +126,24 @@ const Tetris = ({ room, username }) => {
 							</Button>
 						</>
 					) : (
-						<p>Waiting for the host to start the game.</p>
+						<>
+							{!gameOn && (
+								<p>Waiting for the host to start the game.</p>
+							)}
+						</>
 					)}
 				</div>
 				<div>
 					<Grid grid={currentGrid} isOpponent={false} />
-					{socket &&
-						<h2 className="text-center font-semibold">{gameOver.get(socket.id)
-							? "Game Over"
-							: ""}
+					{socket && (
+						<h2 className="text-center font-semibold">
+							{gameOver.get(socket.id)
+								? winner && winner == socket.id
+									? "You won"
+									: "You lost"
+								: ""}
 						</h2>
-					}
+					)}
 				</div>
 				<div className="grid-rows items-center">
 					{players
@@ -150,7 +163,9 @@ const Tetris = ({ room, username }) => {
 										Score:{" "}
 										{scores.get(player.socketId) ?? "0"}{" "}
 										{gameOver.get(player.socketId)
-											? " - Game Over"
+											? winner && winner === player.socketId
+												? " - You won"
+												: " - You lost"
 											: ""}
 									</p>
 								</div>

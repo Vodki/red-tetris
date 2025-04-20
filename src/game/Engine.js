@@ -124,10 +124,9 @@ export class Player{
       if (!this.isValidPosition(this.current)) {
         this.gameOver = true;
       }
-      this.spawnNewTetromino();
     }
-    this.sendGameState();
     this.sendGameShadow();
+    this.sendGameState();
   }
 
   lockCurrent() {
@@ -287,7 +286,6 @@ export class Player{
       socketId: this.socketId,
     };
 
-    //this.socket.to(this.room.name).emit('GameShadow', state);
     this.room.io.to(this.room.name).emit('GameShadow', state);
   }
 
@@ -327,10 +325,18 @@ export class Player{
   handleGameOver() {
     this.stop();
     this.sendGameShadow();
-    this.socket.emit('game-over', {
-      username: this.username,
-      score: this.score
-    });
+    if (this.room.engines.size == 1) {
+      return;
+    } else if (this.room.playersStillPlaying() == 1) {
+      const player = this.room.lastPlayerSocketId()
+      const engine = this.room.engines.get(player)
+      engine.gameOver = true;
+      engine.stop();
+      engine.sendGameShadow();
+      this.room.io.to(this.room.name).emit('allPlayersDone', true)
+      this.room.io.to(this.room.name).emit('Winner', {socketId: player});
+      engine.reset();
+    }
   }
 }
 

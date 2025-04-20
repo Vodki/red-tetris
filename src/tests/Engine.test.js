@@ -38,12 +38,16 @@ function makeMockRoom(player) {
   const room = {
     name: 'room1',
     host: player.socketId,
-    engines: new Map(),
+    engines: new Map([[player.socketId, player]]),
     allPlayersDone: vi.fn(),
     roomUpdate: vi.fn(),
-  }
-  room.engines.set(player.socketId, player)
-  return room
+    io: {
+      to: vi.fn().mockReturnValue({
+        emit: vi.fn()
+      })
+    }
+  };
+  return room;
 }
 
 describe('Player', () => {
@@ -171,18 +175,26 @@ describe('Player', () => {
 
   it('sendGameShadow emits GameShadow to room', () => {
     const shadowSpy = vi.fn()
-    socket.to.mockReturnValue({ emit: shadowSpy })
-    player.score = 10; player.level = 2; player.gameOver = true
+    room.io.to.mockReturnValue({ emit: shadowSpy })
+
+    player.score = 10
+    player.level = 2
+    player.gameOver = true
+
     player.sendGameShadow()
-    expect(socket.to).toHaveBeenCalledWith(room.name)
-    expect(shadowSpy).toHaveBeenCalledWith('GameShadow', expect.objectContaining({
-      grid: player.board.grid,
-      score: 10,
-      level: 2,
-      gameOver: true,
-      socketId: 'socket1',
-      nextPiece: undefined
-    }))
+
+    expect(room.io.to).toHaveBeenCalledWith(room.name)
+    expect(shadowSpy).toHaveBeenCalledWith(
+      'GameShadow',
+      expect.objectContaining({
+        grid:      player.board.grid,
+        score:     10,
+        level:     2,
+        gameOver:  true,
+        socketId:  player.socketId,
+        nextPiece: player.next,
+      })
+    )
   })
 
   it('reset clears score, level, clearedLines, pieceNb and creates new Board', () => {

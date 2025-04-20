@@ -23,6 +23,7 @@ export const SocketProvider = ({ children }) => {
 	const [grids, setGrids] = useState(() => new Map());
 	const [scores, setScores] = useState(() => new Map());
 	const [gameOver, setGameOver] = useState(() => new Map());
+	const [winner, setWinner] = useState("");
 
 	useEffect(() => {
 		const ws = io("http://localhost:3000", {
@@ -79,6 +80,10 @@ export const SocketProvider = ({ children }) => {
 		ws.on("roomUpdate", (data) => {
 			setHost(data.host);
 			setPlayers(data.players);
+		});
+
+		ws.on("Winner", (data) => {
+			setWinner(data.socketId);
 		});
 
 		ws.on("GameShadow", (data) => {
@@ -148,6 +153,8 @@ export const SocketProvider = ({ children }) => {
 				grids,
 				scores,
 				gameOver,
+				winner,
+				setWinner,
 			}}
 		>
 			{children}

@@ -48,6 +48,26 @@ export class Game {
     return done;
   }
 
+  playersStillPlaying() {
+    let left = 0;
+    this.engines.forEach((engine) => {
+      if (engine.isRunning) {
+        left++;
+      }
+    });
+    return left;
+  }
+
+  lastPlayerSocketId() {
+    let socketId;
+    this.engines.forEach((engine) => {
+      if (engine.isRunning) {
+        socketId = engine.socketId
+      }
+    });
+    return socketId;
+  }
+
   startGames() {
     this.io.to(this.name).emit('allPlayersDone', false)
     this.engines.forEach((engine) => {
