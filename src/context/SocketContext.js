@@ -26,7 +26,7 @@ export const SocketProvider = ({ children }) => {
 	const [winner, setWinner] = useState("");
 
 	useEffect(() => {
-		const ws = io("http://localhost:3000", {
+		const ws = io("http://red-tetris-iota.vercel.app", {
 			reconnection: true,
 			reconnectionDelay: 1000,
 			autoConnect: true,

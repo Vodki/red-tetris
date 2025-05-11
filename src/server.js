@@ -5,7 +5,7 @@ import { Player } from "./game/Engine.js";
 import { roomExists, Game } from "./game/Room.js";
 
 const dev = process.env.NODE_ENV !== "production";
-const hostname = "localhost";
+const hostname = "red-tetris-iota.vercel.app";
 const port = 3000;
 const app = next({ dev, hostname, port });
 const handler = app.getRequestHandler();
