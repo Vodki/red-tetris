@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tetris
+  namespace: tetris
+  annotations:
+    # For Traefik (default K3s ingress controller)
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    # For cert-manager (optional, if you use it)
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: tetris.louis-sylvestre.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tetris
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - tetris.louis-sylvestre.dev
+      # secretName: tetris-tls  # Uncomment if using cert-manager
