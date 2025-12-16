@@ -123,6 +123,7 @@ export class Player{
       this.spawnNewTetromino()
       if (!this.isValidPosition(this.current)) {
         this.gameOver = true;
+        this.handleGameOver();
       }
     }
     this.sendGameShadow();
@@ -235,6 +236,7 @@ export class Player{
       this.spawnNewTetromino()
       if (!this.isValidPosition(this.current)) {
         this.gameOver = true;
+        this.handleGameOver();
       }
     }
     this.score += this.level
@@ -259,6 +261,7 @@ export class Player{
     this.spawnNewTetromino()
     if (!this.isValidPosition(this.current)) {
       this.gameOver = true;
+      this.handleGameOver();
     }
     this.score += dropDistance * this.level
     this.sendGameState();
@@ -272,7 +275,6 @@ export class Player{
       nextPiece: this.next,
       gameOver: this.gameOver,
     };
-    this.room.allPlayersDone();
     this.socket.emit('GameUpdate', state);
   }
 
@@ -325,17 +327,31 @@ export class Player{
   handleGameOver() {
     this.stop();
     this.sendGameShadow();
+    this.sendGameState();
+    
     if (this.room.engines.size == 1) {
+      this.room.io.to(this.room.name).emit('allPlayersDone', true);
       return;
-    } else if (this.room.playersStillPlaying() == 1) {
-      const player = this.room.lastPlayerSocketId()
-      const engine = this.room.engines.get(player)
-      engine.gameOver = true;
-      engine.stop();
-      engine.sendGameShadow();
-      this.room.io.to(this.room.name).emit('allPlayersDone', true)
-      this.room.io.to(this.room.name).emit('Winner', {socketId: player});
-      engine.reset();
+    }
+    
+    const playersLeft = this.room.playersStillPlaying();
+    
+    if (playersLeft == 1) {
+      const winnerId = this.room.lastPlayerSocketId();
+      const winnerEngine = this.room.engines.get(winnerId);
+      
+      if (winnerEngine) {
+        winnerEngine.stop();
+        winnerEngine.sendGameShadow();
+        winnerEngine.sendGameState();
+      }
+      
+      this.room.io.to(this.room.name).emit('Winner', {socketId: winnerId});
+      this.room.io.to(this.room.name).emit('allPlayersDone', true);
+      this.room.isRunning = false;
+    } else if (playersLeft == 0) {
+      this.room.io.to(this.room.name).emit('allPlayersDone', true);
+      this.room.isRunning = false;
     }
   }
 }

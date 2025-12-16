@@ -7,8 +7,11 @@ metadata:
     # For Traefik (default K3s ingress controller)
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    # For cert-manager (optional, if you use it)
-    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # For cert-manager
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # For WebSocket support
+    traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.name: "tetris-sticky"
 spec:
   ingressClassName: traefik
   rules:
@@ -25,4 +28,4 @@ spec:
   tls:
     - hosts:
         - tetris.louis-sylvestre.dev
-      # secretName: tetris-tls  # Uncomment if using cert-manager
+      secretName: tetris-tls

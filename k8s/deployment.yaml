@@ -15,6 +15,8 @@ spec:
       labels:
         app: tetris
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: tetris
           image: ghcr.io/vodki/tetris:latest

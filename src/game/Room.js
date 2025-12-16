@@ -36,15 +36,9 @@ export class Game {
     let done = true;
     this.engines.forEach((engine) => {
       if (engine.isRunning) {
-        done = false
-      } else if (engine.pieceNb != 0) {
-        engine.reset()
+        done = false;
       }
     });
-    if (done) {
-      this.io.to(this.name).emit('allPlayersDone', true)
-      this.isRunning = false;
-    }
     return done;
   }
 
@@ -68,11 +62,20 @@ export class Game {
     return socketId;
   }
 
-  startGames() {
-    this.io.to(this.name).emit('allPlayersDone', false)
+  resetAllPlayers() {
     this.engines.forEach((engine) => {
-      engine.start()
-    })
+      if (!engine.isRunning) {
+        engine.reset();
+      }
+    });
+  }
+
+  startGames() {
+    this.resetAllPlayers();
+    this.io.to(this.name).emit('allPlayersDone', false);
+    this.engines.forEach((engine) => {
+      engine.start();
+    });
     this.isRunning = true;
   }
 }
