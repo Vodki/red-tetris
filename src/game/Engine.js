@@ -331,6 +331,7 @@ export class Player{
     
     if (this.room.engines.size == 1) {
       this.room.io.to(this.room.name).emit('allPlayersDone', true);
+      this.room.isRunning = false;
       return;
     }
     
@@ -341,6 +342,7 @@ export class Player{
       const winnerEngine = this.room.engines.get(winnerId);
       
       if (winnerEngine) {
+        winnerEngine.gameOver = true;  // Marquer le gagnant comme gameOver pour que gameOn passe à false côté client
         winnerEngine.stop();
         winnerEngine.sendGameShadow();
         winnerEngine.sendGameState();

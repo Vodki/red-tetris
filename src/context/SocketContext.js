@@ -26,7 +26,11 @@ export const SocketProvider = ({ children }) => {
 	const [winner, setWinner] = useState("");
 
 	useEffect(() => {
-		const ws = io({
+		// Use environment variable or fallback to current window location
+		const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 
+			(typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+		
+		const ws = io(socketUrl, {
 			reconnection: true,
 			reconnectionDelay: 1000,
 			autoConnect: true,
@@ -75,6 +79,11 @@ export const SocketProvider = ({ children }) => {
 
 		ws.on("allPlayersDone", (data) => {
 			setAllPlayersDone(data);
+			// Reset gameOver states when a new game starts
+			if (data === false) {
+				setGameOver(new Map());
+				setWinner("");
+			}
 		});
 
 		ws.on("roomUpdate", (data) => {

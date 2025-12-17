@@ -13,7 +13,13 @@ const handler = app.getRequestHandler();
 export async function createServerInstance() {
   await app.prepare();
   const httpServer = createServer(handler);
-  const io = new Server(httpServer);
+  const io = new Server(httpServer, {
+    cors: {
+      origin: dev ? ["http://localhost:3000", "http://0.0.0.0:3000"] : "*",
+      methods: ["GET", "POST"],
+      credentials: true
+    }
+  });
   const state = {
     rooms: new Map(),
     players: new Map(),
