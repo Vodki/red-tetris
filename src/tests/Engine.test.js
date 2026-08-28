@@ -1,212 +1,390 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { Player } from '../game/Engine.js'
-import { Board } from '../game/Board.js'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Player } from '../game/Engine.js';
+import { Piece } from '../game/Tetromino.js';
+import { GRAVITY, INVISIBLE } from '../game/pure/rules.js';
+import { GHOST, ghostBlocks } from '../game/pure/board.js';
 
-const ROWS = 20
-const COLS = 10
+const makeSocket = (id = 'socket-1') => ({
+  id,
+  handlers: new Map(),
+  emit: vi.fn(),
+  leave: vi.fn(),
+  on(event, handler) {
+    this.handlers.set(event, handler);
+  },
+  fire(event, payload) {
+    const handler = this.handlers.get(event);
+    if (handler) handler(payload);
+  },
+});
 
-function makeTetromino(shape = [{ x: 0, y: 0 }], color = 1) {
-  return {
-    currentShape: shape,
-    color,
-    position: { x: 0, y: 0 },
-    rotationIndex: 0,
-    clone() {
-      const t = makeTetromino(shape, color)
-      t.position = { ...this.position }
-      t.rotationIndex = this.rotationIndex
-      return t
-    },
-    rotate() {
-      this.rotationIndex = (this.rotationIndex + 1) % 4
-    },
-  }
-}
+const makeRoom = (mode = 'classic') => ({
+  name: 'room',
+  mode,
+  engines: new Map(),
+  io: { to: vi.fn().mockReturnThis(), emit: vi.fn() },
+  onPlayerFinished: vi.fn(),
+});
 
-function makeMockSocket() {
-  const socket = {
-    id: 'socket1',
-    on: vi.fn(),
-    emit: vi.fn(),
-    to: vi.fn(),
-  }
-  socket.to.mockReturnValue({ emit: vi.fn() })
-  return socket
-}
+/** A deterministic sequence: only O pieces, easy to place. */
+const sequence = () => [new Piece('O'), new Piece('O')];
 
-function makeMockRoom(player) {
-  const room = {
-    name: 'room1',
-    host: player.socketId,
-    engines: new Map([[player.socketId, player]]),
-    allPlayersDone: vi.fn(),
-    roomUpdate: vi.fn(),
-    io: {
-      to: vi.fn().mockReturnValue({
-        emit: vi.fn()
-      })
-    }
-  };
-  return room;
-}
+const makePlayer = (socket = makeSocket(), room = makeRoom()) => {
+  const player = new Player(socket, true, sequence());
+  player.username = socket.id;
+  player.room = room;
+  room.engines.set(player.socketId, player);
+  return player;
+};
 
 describe('Player', () => {
-  let socket
-  let player
-  let room
-  let tetrominos
+  let socket;
+  let room;
+  let player;
 
   beforeEach(() => {
-    socket = makeMockSocket()
-    tetrominos = [makeTetromino()]
-    player = new Player(socket, true, tetrominos)
-    room = makeMockRoom(player)
-    player.room = room
-    player.username = 'testuser'
+    vi.useFakeTimers();
+    socket = makeSocket();
+    room = makeRoom();
+    player = makePlayer(socket, room);
+  });
 
-    socket.emit.mockClear()
-    socket.on.mockClear()
-    socket.to.mockClear()
-    room.allPlayersDone.mockClear()
-    room.roomUpdate.mockClear()
-  })
+  afterEach(() => {
+    player.stop();
+    vi.useRealTimers();
+  });
 
-  it('initializes to correct defaults and reset() works', () => {
-    expect(player.score).toBe(0)
-    expect(player.level).toBe(1)
-    expect(player.clearedLines).toBe(0)
-    expect(player.pieceNb).toBe(0)
-    expect(player.board.grid.every(row => row.every(cell => cell === 0))).toBe(true)
+  it('starts on an empty board with a fresh score', () => {
+    expect(player.score).toBe(0);
+    expect(player.level).toBe(1);
+    expect(player.clearedLines).toBe(0);
+    expect(player.pieceNb).toBe(0);
+    expect(player.gameOver).toBe(false);
+    expect(player.board.spectrum()).toEqual(Array(10).fill(0));
+  });
 
-    player.score = 123
-    player.level = 5
-    player.reset()
-    expect(player.score).toBe(0)
-    expect(player.level).toBe(1)
-  })
+  it('walks through the shared sequence and extends it on demand', () => {
+    const shared = player.tetrominos;
+    expect(player.pieceAt(0).id).toBe(shared[0].id);
+    player.pieceAt(5);
+    expect(shared.length).toBeGreaterThanOrEqual(7);
+  });
 
-  it('calculateScore returns correct points per lines', () => {
-    player.level = 2
-    expect(player.calculateScore(1)).toBe(200)
-    expect(player.calculateScore(2)).toBe(600)
-    expect(player.calculateScore(3)).toBe(1000)
-    expect(player.calculateScore(4)).toBe(1600)
-    expect(player.calculateScore(0)).toBe(0)
-    expect(player.calculateScore(5)).toBe(0)
-  })
+  it('hands out clones, never the shared piece itself', () => {
+    const shared = player.tetrominos;
+    player.pieceAt(0).moveBy(5, 5);
+    expect(shared[0].position).toEqual({ x: 4, y: 0 });
+  });
 
-  it('isValidPosition rejects out‑of‑bounds', () => {
-    player.current.position.x = -1
-    expect(player.isValidPosition(player.current)).toBe(false)
-    player.current.position.x = COLS
-    expect(player.isValidPosition(player.current)).toBe(false)
-    player.current.position = { x: 0, y: ROWS }
-    expect(player.isValidPosition(player.current)).toBe(false)
-    player.current.position = { x: 3, y: 5 }
-    expect(player.isValidPosition(player.current)).toBe(true)
-  })
+  it('exposes the next piece of the sequence', () => {
+    expect(player.nextPiece.id).toBe(player.tetrominos[1].id);
+  });
 
-  it('canMoveDown returns false at bottom, true otherwise', () => {
-    player.current.position.y = ROWS - 1
-    expect(player.canMoveDown()).toBe(false)
-    player.current.position.y = 0
-    expect(player.canMoveDown()).toBe(true)
-  })
+  describe('inputs', () => {
+    beforeEach(() => player.start());
 
-  it('moveLeft and moveRight respect boundaries and emit GameUpdate', () => {
-    player.current.position.x = 0
-    player.moveLeft()
-    expect(player.current.position.x).toBe(0)
+    it('moves left and right, and refuses to cross the walls', () => {
+      const startX = player.current.position.x;
+      expect(player.moveLeft()).toBe(true);
+      expect(player.current.position.x).toBe(startX - 1);
+      expect(player.moveRight()).toBe(true);
+      expect(player.current.position.x).toBe(startX);
 
-    player.current.position.x = 0
-    player.moveRight()
-    expect(player.current.position.x).toBe(1)
+      for (let i = 0; i < 10; i += 1) player.moveLeft();
+      expect(player.current.position.x).toBe(0);
+      expect(player.moveLeft()).toBe(false);
+    });
 
-    expect(socket.emit).toHaveBeenCalledWith('GameUpdate', expect.any(Object))
-  })
+    it('rotates, and rolls the rotation back when it does not fit', () => {
+      player.current = new Piece('I', { x: 0, y: 5 });
+      expect(player.rotateCurrent()).toBe(true);
 
-  it('rotateCurrent increments rotationIndex when valid, reverts when invalid', () => {
-    player.current.rotationIndex = 0
-    player.rotateCurrent()
-    expect(player.current.rotationIndex).toBe(1)
+      // An I piece hugging the left wall cannot go back to horizontal.
+      player.current = new Piece('I', { x: 0, y: 5 }, 1);
+      const before = player.current.rotationIndex;
+      expect(player.rotateCurrent()).toBe(false);
+      expect(player.current.rotationIndex).toBe(before);
+    });
 
-    player.current.rotationIndex = 0
-    player.isValidPosition = () => false
-    player.rotateCurrent()
-    expect(player.current.rotationIndex).toBe(0)
-  })
+    it('soft drop moves down one row and scores a point', () => {
+      const y = player.current.position.y;
+      player.moveDown();
+      expect(player.current.position.y).toBe(y + 1);
+      expect(player.score).toBe(1);
+    });
 
-  it('moveDown moves piece down, increases score by level, emits GameUpdate', () => {
-    player.current.position.y = 0
-    player.level = 3
-    player.score = 0
-    player.moveDown()
-    expect(player.current.position.y).toBe(1)
-    expect(player.score).toBe(3)
-    expect(socket.emit).toHaveBeenCalledWith('GameUpdate', expect.objectContaining({
-      score: 3, level: 3
-    }))
-  })
+    it('soft drop never locks the piece by itself', () => {
+      while (player.canMoveDown()) player.moveDown();
+      const pieceNb = player.pieceNb;
+      player.moveDown();
+      expect(player.pieceNb).toBe(pieceNb);
+      expect(player.landed).toBe(true);
+    });
 
-  it('hardDrop drops to bottom and scores dropDistance * level', () => {
-    player.current.position.y = 0
-    player.level = 2
-    player.score = 0
-    vi.spyOn(player, 'spawnNewTetromino').mockImplementation(() => {})
-    player.hardDrop()
-    const dropDistance = ROWS - 1
-    expect(player.score).toBe(dropDistance * 2)
-    expect(socket.emit).toHaveBeenCalledWith('GameUpdate', expect.any(Object))
-  })
+    it('hard drop settles the piece immediately and spawns the next one', () => {
+      player.hardDrop();
+      expect(player.pieceNb).toBe(1);
+      expect(player.board.spectrum().some((height) => height > 0)).toBe(true);
+      expect(player.score).toBeGreaterThan(0);
+    });
 
-  it('sendGameState calls allPlayersDone and emits GameUpdate with correct state', () => {
-    player.score = 42; player.level = 5; player.gameOver = false
-    const visual = player.getVisualGrid()
-    player.sendGameState()
-    expect(room.allPlayersDone).toHaveBeenCalled()
-    expect(socket.emit).toHaveBeenCalledWith('GameUpdate', expect.objectContaining({
-      grid: visual,
-      score: 42,
-      level: 5,
-      gameOver: false,
-      nextPiece: undefined
-    }))
-  })
+    it('routes socket commands to the matching action', () => {
+      const spies = {
+        rotateCurrent: vi.spyOn(player, 'rotateCurrent'),
+        moveLeft: vi.spyOn(player, 'moveLeft'),
+        moveRight: vi.spyOn(player, 'moveRight'),
+        moveDown: vi.spyOn(player, 'moveDown'),
+        hardDrop: vi.spyOn(player, 'hardDrop'),
+      };
 
-  it('sendGameShadow emits GameShadow to room', () => {
-    const shadowSpy = vi.fn()
-    room.io.to.mockReturnValue({ emit: shadowSpy })
+      socket.fire('gameInput', 'Rotate');
+      socket.fire('gameInput', 'MoveLeft');
+      socket.fire('gameInput', 'MoveRight');
+      socket.fire('gameInput', 'MoveDown');
+      socket.fire('gameInput', 'HardDrop');
+      socket.fire('gameInput', 'Nonsense');
 
-    player.score = 10
-    player.level = 2
-    player.gameOver = true
+      Object.values(spies).forEach((spy) => expect(spy).toHaveBeenCalledTimes(1));
+    });
 
-    player.sendGameShadow()
+    it('ignores inputs once the game is over', () => {
+      player.gameOver = true;
+      expect(player.moveLeft()).toBe(false);
+      expect(player.moveDown()).toBe(false);
+      expect(player.hardDrop()).toBe(false);
+      expect(player.rotateCurrent()).toBe(false);
+    });
+  });
 
-    expect(room.io.to).toHaveBeenCalledWith(room.name)
-    expect(shadowSpy).toHaveBeenCalledWith(
-      'GameShadow',
-      expect.objectContaining({
-        grid:      player.board.grid,
-        score:     10,
-        level:     2,
-        gameOver:  true,
-        socketId:  player.socketId,
-        nextPiece: player.next,
-      })
-    )
-  })
+  describe('falling', () => {
+    it('falls one row per frame', () => {
+      player.start();
+      const y = player.current.position.y;
+      vi.advanceTimersByTime(500);
+      expect(player.current.position.y).toBe(y + 1);
+    });
 
-  it('reset clears score, level, clearedLines, pieceNb and creates new Board', () => {
-    player.score = 999
-    player.level = 10
-    player.clearedLines = 5
-    player.pieceNb = 3
-    player.reset()
-    expect(player.score).toBe(0)
-    expect(player.level).toBe(1)
-    expect(player.clearedLines).toBe(0)
-    expect(player.pieceNb).toBe(0)
-    expect(player.board).toBeInstanceOf(Board)
-  })
-})
+    it('stays movable for one extra frame after touching the pile', () => {
+      player.start();
+      while (player.canMoveDown()) player.current.moveBy(0, 1);
+
+      // First frame on the floor: the piece only gets flagged as landed.
+      vi.advanceTimersByTime(500);
+      expect(player.landed).toBe(true);
+      expect(player.pieceNb).toBe(0);
+
+      // Sliding it sideways cancels the lock while it can fall again.
+      expect(player.moveLeft()).toBe(true);
+
+      // Second frame: it finally settles.
+      vi.advanceTimersByTime(500);
+      expect(player.pieceNb).toBe(1);
+    });
+
+    it('does nothing once stopped', () => {
+      player.start();
+      player.stop();
+      const y = player.current.position.y;
+      vi.advanceTimersByTime(2000);
+      expect(player.current.position.y).toBe(y);
+    });
+  });
+
+  describe('lines, score and level', () => {
+    it('clears a line, scores it and counts it', () => {
+      player.start();
+      // One gap left on the bottom row, filled by the O piece about to settle.
+      player.board.grid = player.board.grid.map((row, y) =>
+        y === 19 ? [1, 1, 1, 1, 1, 1, 0, 0, 1, 1] : row
+      );
+      player.current = new Piece('O', { x: 6, y: 18 });
+      player.lockAndSpawn();
+
+      expect(player.clearedLines).toBe(1);
+      expect(player.score).toBe(100);
+    });
+
+    it('levels up every ten lines and re-arms the timer', () => {
+      player.start();
+      const schedule = vi.spyOn(player, 'scheduleTick');
+      player.clearedLines = 9;
+      player.board.grid = player.board.grid.map((row, y) =>
+        y === 19 ? Array(10).fill(1) : row
+      );
+      player.lockAndSpawn();
+
+      expect(player.level).toBe(2);
+      expect(schedule).toHaveBeenCalled();
+    });
+
+    it('speeds up in the gravity mode only', () => {
+      room.mode = GRAVITY;
+      player.level = 3;
+      player.start();
+      expect(player.mode).toBe(GRAVITY);
+
+      room.mode = 'classic';
+      expect(player.mode).toBe('classic');
+    });
+  });
+
+  describe('penalties', () => {
+    let opponent;
+
+    beforeEach(() => {
+      opponent = makePlayer(makeSocket('socket-2'), room);
+      opponent.tetrominos = player.tetrominos;
+      opponent.reset();
+      player.start();
+      opponent.start();
+    });
+
+    afterEach(() => opponent.stop());
+
+    it('sends n-1 indestructible lines to the opponents', () => {
+      player.sendPenalty(2);
+      expect(opponent.board.grid[19].every((cell) => cell === -1)).toBe(true);
+      expect(opponent.board.grid[18].every((cell) => cell === -1)).toBe(true);
+      expect(opponent.board.clearFullLines()).toBe(0);
+    });
+
+    it('never punishes the sender', () => {
+      player.sendPenalty(3);
+      expect(player.board.spectrum()).toEqual(Array(10).fill(0));
+    });
+
+    it('skips the players who are already out', () => {
+      opponent.isRunning = false;
+      player.sendPenalty(2);
+      expect(opponent.board.spectrum()).toEqual(Array(10).fill(0));
+    });
+
+    it('ends the game of an opponent pushed past the ceiling', () => {
+      opponent.board.lock([{ x: 0, y: 0 }], 3);
+      player.sendPenalty(1);
+      expect(opponent.gameOver).toBe(true);
+      expect(opponent.isRunning).toBe(false);
+    });
+
+    it('clearing two lines sends exactly one penalty line', () => {
+      const spy = vi.spyOn(player, 'sendPenalty');
+      player.board.grid = player.board.grid.map((row, y) =>
+        y >= 18 ? Array(10).fill(1) : row
+      );
+      player.lockAndSpawn();
+      expect(spy).toHaveBeenCalledWith(1);
+    });
+
+    it('clearing a single line sends nothing', () => {
+      const spy = vi.spyOn(player, 'sendPenalty');
+      player.board.grid = player.board.grid.map((row, y) =>
+        y === 19 ? Array(10).fill(1) : row
+      );
+      player.lockAndSpawn();
+      expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('game over', () => {
+    it('ends when a new piece can no longer enter the field', () => {
+      player.start();
+      player.board.grid = player.board.grid.map((row, y) =>
+        y <= 2 ? Array(10).fill(2) : row
+      );
+      player.spawnNewTetromino();
+
+      expect(player.gameOver).toBe(true);
+      expect(player.isRunning).toBe(false);
+      expect(room.onPlayerFinished).toHaveBeenCalledWith(player);
+    });
+
+    it('only reports the end once', () => {
+      player.start();
+      player.endGame();
+      player.endGame();
+      expect(room.onPlayerFinished).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('what goes over the wire', () => {
+    it('sends its own grid, spectrum and next piece to its owner', () => {
+      player.sendGameState();
+      const [event, payload] = socket.emit.mock.calls.at(-1);
+
+      expect(event).toBe('GameUpdate');
+      expect(payload.grid).toHaveLength(20);
+      expect(payload.spectrum).toHaveLength(10);
+      expect(payload.nextPiece.id).toBeDefined();
+      expect(payload.score).toBe(0);
+    });
+
+    it('only broadcasts a spectrum to the room, never a grid', () => {
+      player.sendSpectrum();
+      const [event, payload] = room.io.emit.mock.calls.at(-1);
+
+      expect(room.io.to).toHaveBeenCalledWith('room');
+      expect(event).toBe('SpectrumUpdate');
+      expect(payload.spectrum).toHaveLength(10);
+      expect(payload.grid).toBeUndefined();
+    });
+
+    it('hides the pile in the invisible mode', () => {
+      room.mode = INVISIBLE;
+      player.board.lock([{ x: 0, y: 19 }], 4);
+      const grid = player.getVisualGrid();
+      expect(grid[19][0]).toBe(0);
+    });
+
+    it('reveals the pile once the invisible game is over', () => {
+      room.mode = INVISIBLE;
+      player.board.lock([{ x: 0, y: 19 }], 4);
+      expect(player.getVisualGrid()[19][0]).toBe(0);
+
+      player.endGame();
+      expect(player.getVisualGrid()[19][0]).toBe(4);
+
+      const [, payload] = player.socket.emit.mock.calls
+        .filter(([event]) => event === 'GameUpdate')
+        .at(-1);
+      expect(payload.gameOver).toBe(true);
+      expect(payload.grid[19][0]).toBe(4);
+    });
+
+    it('keeps the landing preview in the invisible mode', () => {
+      room.mode = INVISIBLE;
+      player.board.lock([{ x: 0, y: 19 }], 4);
+      const grid = player.getVisualGrid();
+      const landing = ghostBlocks(player.board.grid, player.current.blocks);
+      landing.forEach(({ x, y }) => expect(grid[y][x]).not.toBe(0));
+      expect(grid.some((row) => row.includes(GHOST))).toBe(true);
+    });
+
+    it('shows the pile in the classic mode', () => {
+      player.board.lock([{ x: 0, y: 19 }], 4);
+      expect(player.getVisualGrid()[19][0]).toBe(4);
+    });
+
+    it('does not broadcast a spectrum without a room', () => {
+      player.room = null;
+      expect(() => player.sendSpectrum()).not.toThrow();
+    });
+  });
+
+  describe('disconnect', () => {
+    it('leaves the room and stops the loop', () => {
+      room.removePlayer = vi.fn();
+      player.start();
+      player.disconnect();
+
+      expect(player.isRunning).toBe(false);
+      expect(room.removePlayer).toHaveBeenCalled();
+      expect(socket.leave).toHaveBeenCalledWith('room');
+      expect(player.room).toBeNull();
+    });
+
+    it('is harmless when the player is in no room', () => {
+      player.room = null;
+      expect(() => player.disconnect()).not.toThrow();
+    });
+  });
+});

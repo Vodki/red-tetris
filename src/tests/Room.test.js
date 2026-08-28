@@ -1,121 +1,271 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest'
-import { Game, roomExists } from '../game/Room.js'
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Game, listOpenRooms, roomExists } from '../game/Room.js';
+import { GRAVITY, INVISIBLE } from '../game/pure/rules.js';
 
-vi.mock('./Tetromino.js', () => ({
-  newRandomTetromino: vi.fn(() => ({ shape: [[1]], color: 'red' }))
-}))
+const makeIo = () => {
+  const emit = vi.fn();
+  return { emit, to: vi.fn(() => ({ emit })), roomEmit: emit };
+};
 
-class MockEngine {
-  constructor(username, socketId) {
-    this.username = username
-    this.socketId = socketId
-    this.isRunning = false
-    this.pieceNb = 0
-  }
-  
-  getVisualGrid() { return [[0]] }
-  start() { this.isRunning = true }
-  reset() { this.pieceNb = 0 }
-}
+/** Stand-in for a `Player`, with only what `Game` actually touches. */
+const makeEngine = (socketId, username = socketId) => ({
+  socketId,
+  username,
+  isHost: false,
+  isRunning: false,
+  gameOver: false,
+  score: 0,
+  level: 1,
+  clearedLines: 0,
+  tetrominos: [],
+  room: null,
+  board: { spectrum: () => Array(10).fill(0) },
+  reset: vi.fn(),
+  stop: vi.fn(function stop() {
+    this.isRunning = false;
+  }),
+  start: vi.fn(function start() {
+    this.isRunning = true;
+  }),
+  sendGameState: vi.fn(),
+  sendSpectrum: vi.fn(),
+});
 
 describe('Game', () => {
-  let mockIo
-  let game
+  let io;
+  let game;
 
   beforeEach(() => {
-    mockIo = {
-      to: vi.fn().mockReturnThis(),
-      emit: vi.fn(),
-      sockets: {
-        adapter: {
-          rooms: new Map()
-        }
-      }
-    }
-    
-    game = new Game('test-room', 'host-id', mockIo)
-    game.engines.set('player1', new MockEngine('user1', 'socket1'))
-  })
+    io = makeIo();
+    game = new Game('lobby', 'host-1', io);
+  });
 
-  describe('roomExists', () => {
-    it('should return true when room exists', () => {
-      mockIo.sockets.adapter.rooms.set('existing-room', new Set())
-      expect(roomExists(mockIo, 'existing-room')).toBe(true)
-    })
+  it('opens with a host, no players and a shared piece sequence', () => {
+    expect(game.name).toBe('lobby');
+    expect(game.host).toBe('host-1');
+    expect(game.size).toBe(0);
+    expect(game.isRunning).toBe(false);
+    expect(game.mode).toBe('classic');
+    expect(game.tetrominos).toHaveLength(2);
+  });
 
-    it('should return false when room doesnt exist', () => {
-      expect(roomExists(mockIo, 'non-existent-room')).toBe(false)
-    })
-  })
+  it('rejects an unknown mode at construction', () => {
+    expect(new Game('r', 'h', io, { mode: 'nope' }).mode).toBe('classic');
+    expect(new Game('r', 'h', io, { mode: GRAVITY }).mode).toBe(GRAVITY);
+  });
 
-  describe('constructor', () => {
-    it('should initialize with correct properties', () => {
-      expect(game.name).toBe('test-room')
-      expect(game.host).toBe('host-id')
-      expect(game.isRunning).toBe(false)
-      expect(game.tetrominos).toHaveLength(2)
-    })
-  })
+  it('hands every player the same piece sequence', () => {
+    const a = makeEngine('host-1');
+    const b = makeEngine('p2');
+    game.addPlayer(a);
+    game.addPlayer(b);
 
-  describe('serializePlayers', () => {
-    it('should serialize players correctly', () => {
-      const result = game.serializePlayers()
-      expect(result).toEqual({
-        host: 'host-id',
-        players: [{
-          username: 'user1',
-          socketId: 'socket1',
-          grid: [[0]]
-        }]
-      })
-    })
-  })
+    expect(a.tetrominos).toBe(game.tetrominos);
+    expect(b.tetrominos).toBe(game.tetrominos);
+    expect(a.isHost).toBe(true);
+    expect(b.isHost).toBe(false);
+  });
 
-  describe('allPlayersDone', () => {
-    it('should return true when all players are done', () => {
-      game.engines.get('player1').isRunning = false
-      expect(game.allPlayersDone()).toBe(true)
-      expect(mockIo.emit).toHaveBeenCalledWith('allPlayersDone', true)
-      expect(game.isRunning).toBe(false)
-    })
+  it('serialises spectrums, never the actual grids', () => {
+    game.addPlayer(makeEngine('host-1', 'Alice'));
+    const payload = game.serializePlayers();
 
-    it('should return false when any player is still running', () => {
-      game.engines.get('player1').isRunning = true
-      expect(game.allPlayersDone()).toBe(false)
-    })
+    expect(payload.host).toBe('host-1');
+    expect(payload.mode).toBe('classic');
+    expect(payload.players[0].username).toBe('Alice');
+    expect(payload.players[0].spectrum).toHaveLength(10);
+    expect(payload.players[0].grid).toBeUndefined();
+  });
 
-    it('should reset players with non-zero piece count', () => {
-      const engine = game.engines.get('player1')
-      engine.pieceNb = 5
-      engine.isRunning = false
-      game.allPlayersDone()
-      expect(engine.pieceNb).toBe(0)
-    })
-  })
+  describe('host hand-over', () => {
+    it('promotes a remaining player when the host leaves', () => {
+      const host = makeEngine('host-1');
+      const second = makeEngine('p2');
+      const third = makeEngine('p3');
+      [host, second, third].forEach((engine) => game.addPlayer(engine));
 
-  describe('startGames', () => {
-    it('should start all games and emit event', () => {
-      game.startGames()
-      expect(mockIo.emit).toHaveBeenCalledWith('allPlayersDone', false)
-      expect(game.isRunning).toBe(true)
-      game.engines.forEach(engine => {
-        expect(engine.isRunning).toBe(true)
-      })
-    })
-  })
+      game.removePlayer(host);
 
-  describe('roomUpdate', () => {
-    it('should emit room update with serialized players', () => {
-      game.roomUpdate()
-      expect(mockIo.to).toHaveBeenCalledWith('test-room')
-      expect(mockIo.emit).toHaveBeenCalledWith('roomUpdate', {
-        host: 'host-id',
-        players: [{
-          username: 'user1',
-          socketId: 'socket1',
-          grid: [[0]]
-        }]
-      })
-    })
-  })
-})
+      expect(game.host).toBe('p2');
+      expect(second.isHost).toBe(true);
+      expect(third.isHost).toBe(false);
+      expect(game.size).toBe(2);
+    });
+
+    it('keeps the host when somebody else leaves', () => {
+      const host = makeEngine('host-1');
+      const second = makeEngine('p2');
+      game.addPlayer(host);
+      game.addPlayer(second);
+
+      game.removePlayer(second);
+
+      expect(game.host).toBe('host-1');
+      expect(host.isHost).toBe(true);
+    });
+
+    it('disposes of the room once the last player leaves', () => {
+      const onEmpty = vi.fn();
+      const room = new Game('solo', 'host-1', io, { onEmpty });
+      const host = makeEngine('host-1');
+      room.addPlayer(host);
+
+      room.removePlayer(host);
+
+      expect(room.size).toBe(0);
+      expect(room.host).toBeNull();
+      expect(onEmpty).toHaveBeenCalledWith(room);
+    });
+  });
+
+  describe('modes', () => {
+    it('lets the host switch mode between two rounds', () => {
+      expect(game.setMode(INVISIBLE)).toBe(true);
+      expect(game.mode).toBe(INVISIBLE);
+    });
+
+    it('refuses an unknown mode or a mode change mid-game', () => {
+      expect(game.setMode('nope')).toBe(false);
+      game.isRunning = true;
+      expect(game.setMode(GRAVITY)).toBe(false);
+      expect(game.mode).toBe('classic');
+    });
+  });
+
+  describe('rounds', () => {
+    let host;
+    let challenger;
+
+    beforeEach(() => {
+      host = makeEngine('host-1');
+      challenger = makeEngine('p2');
+      game.addPlayer(host);
+      game.addPlayer(challenger);
+    });
+
+    it('starts a round for everyone with a brand new sequence', () => {
+      const previous = game.tetrominos;
+      game.startGames();
+
+      expect(game.isRunning).toBe(true);
+      expect(game.tetrominos).not.toBe(previous);
+      expect(host.reset).toHaveBeenCalled();
+      expect(host.start).toHaveBeenCalled();
+      expect(challenger.tetrominos).toBe(game.tetrominos);
+      expect(io.roomEmit).toHaveBeenCalledWith('allPlayersDone', false);
+      expect(io.roomEmit).toHaveBeenCalledWith('gameStarted', { mode: 'classic' });
+    });
+
+    it('counts the players still standing', () => {
+      game.startGames();
+      expect(game.playersStillPlaying()).toBe(2);
+      expect(game.allPlayersDone()).toBe(false);
+
+      host.isRunning = false;
+      expect(game.playersStillPlaying()).toBe(1);
+      expect(game.lastPlayerStanding()).toBe(challenger);
+    });
+
+    it('declares the last player standing the winner', () => {
+      game.startGames();
+      host.isRunning = false;
+      game.onPlayerFinished(host);
+
+      expect(challenger.gameOver).toBe(true);
+      expect(challenger.stop).toHaveBeenCalled();
+      expect(io.roomEmit).toHaveBeenCalledWith('Winner', {
+        socketId: 'p2',
+        username: 'p2',
+      });
+      expect(io.roomEmit).toHaveBeenCalledWith('allPlayersDone', true);
+      expect(game.isRunning).toBe(false);
+    });
+
+    it('does not end the round while two players are still alive', () => {
+      game.startGames();
+      expect(game.checkGameEnd()).toBe(false);
+      expect(game.isRunning).toBe(true);
+    });
+
+    it('ends a solo game when its only player tops out', () => {
+      const solo = new Game('solo', 'host-1', io);
+      const only = makeEngine('host-1');
+      solo.addPlayer(only);
+      solo.startGames();
+
+      expect(solo.checkGameEnd()).toBe(false);
+
+      only.isRunning = false;
+      solo.onPlayerFinished(only);
+
+      expect(solo.isRunning).toBe(false);
+      expect(io.roomEmit).toHaveBeenCalledWith('allPlayersDone', true);
+      expect(io.roomEmit).not.toHaveBeenCalledWith(
+        'Winner',
+        expect.objectContaining({ socketId: 'host-1' })
+      );
+    });
+
+    it('ends the round when the second-to-last player disconnects', () => {
+      game.startGames();
+      game.removePlayer(host);
+      expect(game.isRunning).toBe(false);
+    });
+
+    it('ignores an end check outside of a round', () => {
+      expect(game.checkGameEnd()).toBe(false);
+    });
+  });
+
+  describe('score persistence', () => {
+    it('records a finished player on the scoreboard', () => {
+      const scoreboard = { record: vi.fn() };
+      const room = new Game('scored', 'host-1', io, { scoreboard });
+      const host = makeEngine('host-1', 'Alice');
+      host.score = 1200;
+      host.clearedLines = 7;
+      room.addPlayer(host);
+
+      room.recordScore(host, true);
+
+      expect(scoreboard.record).toHaveBeenCalledWith({
+        username: 'Alice',
+        score: 1200,
+        lines: 7,
+        level: 1,
+        room: 'scored',
+        mode: 'classic',
+        won: true,
+      });
+    });
+
+    it('records nothing without a scoreboard or a username', () => {
+      const scoreboard = { record: vi.fn() };
+      const room = new Game('scored', 'host-1', io, { scoreboard });
+      const anonymous = makeEngine('p1', null);
+
+      expect(() => game.recordScore(makeEngine('p1'), false)).not.toThrow();
+      room.recordScore(anonymous, false);
+      expect(scoreboard.record).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('roomExists / listOpenRooms', () => {
+  it('answers from the server room registry', () => {
+    const rooms = new Map([['lobby', new Game('lobby', 'h', makeIo())]]);
+    expect(roomExists(rooms, 'lobby')).toBe(true);
+    expect(roomExists(rooms, 'nope')).toBe(false);
+    expect(roomExists(null, 'lobby')).toBe(false);
+  });
+
+  it('summarises the open rooms for the lobby', () => {
+    const io = makeIo();
+    const game = new Game('lobby', 'h', io);
+    game.addPlayer(makeEngine('h'));
+
+    expect(listOpenRooms(new Map([['lobby', game]]))).toEqual([
+      { name: 'lobby', players: 1, mode: 'classic', isRunning: false },
+    ]);
+  });
+});

@@ -1,28 +1,40 @@
 .game-stats-container {
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
-  }
-  
-  .stat-card {
-    background-color: white;
-    padding: 1rem 1.5rem;
-    border-radius: 6px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 200px;
-  }
-  
-  .stat-label {
-    font-size: 1rem;
-    color: #666;
-    font-weight: 500;
-  }
-  
-  .stat-value {
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: #2c3e50;
-  }
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.game-stats-player {
+	font-size: 1.05rem;
+	font-weight: 700;
+	color: #111827;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 220px;
+}
+
+.stat-card {
+	background-color: #ffffff;
+	padding: 0.6rem 1rem;
+	border: 1px solid #d8dbe2;
+	border-radius: 6px;
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	min-width: 200px;
+}
+
+.stat-label {
+	font-size: 0.9rem;
+	color: #6b7280;
+	font-weight: 500;
+}
+
+.stat-value {
+	font-size: 1.25rem;
+	font-weight: 600;
+	color: #2c3e50;
+	font-variant-numeric: tabular-nums;
+}

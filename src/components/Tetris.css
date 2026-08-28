@@ -1,0 +1,155 @@
+.tetris-page {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	padding: 1rem;
+	min-height: 100vh;
+}
+
+.tetris-page-centered {
+	align-items: center;
+	justify-content: center;
+}
+
+.tetris-status {
+	font-size: 1.1rem;
+	color: #6b7280;
+}
+
+.tetris-header {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	flex-wrap: wrap;
+}
+
+.tetris-room-info {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 1rem;
+	font-size: 0.9rem;
+	color: #4b5563;
+}
+
+.tetris-room-name {
+	font-weight: 600;
+	color: #111827;
+}
+
+.tetris-layout {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	justify-content: center;
+	gap: 2.5rem;
+	flex-wrap: wrap;
+}
+
+.tetris-sidebar,
+.tetris-opponents {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	min-width: 220px;
+}
+
+.tetris-board {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.6rem;
+}
+
+.tetris-outcome {
+	font-size: 1.15rem;
+	font-weight: 600;
+	min-height: 1.6rem;
+}
+
+.tetris-host-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+}
+
+.tetris-host-note,
+.tetris-waiting {
+	font-size: 0.88rem;
+	color: #4b5563;
+}
+
+.tetris-modes {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.tetris-controls {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	padding: 0.8rem 1rem;
+	border: 1px solid #d8dbe2;
+	border-radius: 8px;
+	background: #ffffff;
+}
+
+.tetris-controls-title,
+.tetris-opponents-title {
+	font-size: 0.85rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #6b7280;
+}
+
+.tetris-controls-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	font-size: 0.88rem;
+	color: #374151;
+}
+
+.tetris-controls-list li {
+	display: flex;
+	flex-direction: row;
+	gap: 0.6rem;
+}
+
+.tetris-controls-list span {
+	flex: 0 0 4.5rem;
+	font-weight: 600;
+	color: #111827;
+}
+
+.tetris-opponents-list {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 1rem;
+}
+
+.tetris-opponent {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.3rem;
+	font-size: 0.85rem;
+}
+
+.tetris-opponent-name {
+	font-weight: 600;
+	max-width: 8rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tetris-opponent-score {
+	color: #4b5563;
+	font-variant-numeric: tabular-nums;
+}

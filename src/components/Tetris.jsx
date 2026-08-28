@@ -1,188 +1,244 @@
 "use client";
 
-import React, { useCallback, useEffect } from "react";
-import { useSocket } from "@/context/SocketContext";
-import { createEmptyGrid } from "../utils/gridUtils";
-import { Button } from "./ui/button";
-import GameStats from "./GameStats";
-import "./GameStats.css";
-import Grid from "./Grid";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSocket } from "@/context/SocketContext";
+import { useToast } from "@/components/ui/toast";
+import { Button } from "@/components/ui/button";
+import { GAME_MODES, GAME_MODE_LABELS } from "@/game/pure/rules";
+import GameStats from "./GameStats";
+import Grid from "./Grid";
+import Leaderboard from "./Leaderboard";
+import NextPiece from "./NextPiece";
+import Spectrum from "./Spectrum";
+import "./Tetris.css";
 
-const Tetris = ({ room, username }) => {
-	const defaultGrid = createEmptyGrid();
+const KEY_COMMANDS = {
+	ArrowLeft: "MoveLeft",
+	ArrowRight: "MoveRight",
+	ArrowUp: "Rotate",
+	ArrowDown: "MoveDown",
+	" ": "HardDrop",
+};
+
+const Tetris = ({ room: roomName, username }) => {
 	const {
-		grid,
-		sendMessage,
-		score,
-		gameOn,
-		host,
-		players,
-		socket,
-		allPlayersDone,
-		grids,
-		scores,
-		gameOver,
+		connected,
+		game,
+		room,
+		spectrums,
 		winner,
-		setWinner,
+		allPlayersDone,
+		leaderboard,
+		socket,
+		sendInput,
+		enterRoom,
+		leaveRoom,
+		startGame,
+		setMode,
+		refreshLeaderboard,
 	} = useSocket();
 	const router = useRouter();
+	const toast = useToast();
+	const [status, setStatus] = useState("connecting");
+	// Remembers which room we already asked to enter, so a re-render never
+	// fires a second join for the same room on the same connection.
+	const attempted = useRef("");
 
-	const currentGrid = grid && grid.length > 0 ? grid : defaultGrid;
+	const socketId = socket ? socket.id : null;
+	const isHost = Boolean(socketId) && room.host === socketId;
+
+	// A dropped connection must be able to enter the room again.
+	useEffect(() => {
+		if (!connected) attempted.current = "";
+	}, [connected]);
+
+	// Joining from the URL: the first player to reach the room creates it.
+	useEffect(() => {
+		if (!connected || !roomName || !username) return undefined;
+
+		const key = `${roomName}/${username}`;
+		if (attempted.current === key) return undefined;
+		attempted.current = key;
+
+		let cancelled = false;
+		setStatus("joining");
+
+		enterRoom(roomName, username)
+			.then(() => {
+				if (!cancelled) setStatus("ready");
+			})
+			.catch((error) => {
+				if (cancelled) return;
+				setStatus("rejected");
+				toast.error(error.message);
+				router.push("/");
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [connected, roomName, username, enterRoom, router, toast]);
+
+	useEffect(() => {
+		refreshLeaderboard();
+	}, [refreshLeaderboard, allPlayersDone]);
 
 	const handleKeyDown = useCallback(
 		(event) => {
-			if (!gameOn) return;
-			switch (event.key) {
-				case "ArrowUp":
-					sendMessage("gameInput", "Rotate");
-					event.preventDefault();
-					break;
-				case "ArrowRight":
-					sendMessage("gameInput", "MoveRight");
-					event.preventDefault();
-					break;
-				case "ArrowLeft":
-					sendMessage("gameInput", "MoveLeft");
-					event.preventDefault();
-					break;
-				case "ArrowDown":
-					sendMessage("gameInput", "MoveDown");
-					event.preventDefault();
-					break;
-				case " ":
-					sendMessage("gameInput", "HardDrop");
-					event.preventDefault();
-					break;
-				default:
-					break;
-			}
+			const command = KEY_COMMANDS[event.key];
+			if (!command || !game.running || game.gameOver) return;
+			event.preventDefault();
+			sendInput(command);
 		},
-		[sendMessage, gameOn]
+		[sendInput, game.running, game.gameOver]
 	);
 
 	useEffect(() => {
-		setWinner("");
-	}, [score]);
-
-	useEffect(() => {
 		document.addEventListener("keydown", handleKeyDown);
-		return () => {
-			document.removeEventListener("keydown", handleKeyDown);
-		};
+		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [handleKeyDown]);
 
-	const handleStart = useCallback(() => {
-		if (!gameOn) sendMessage("start", room);
-	}, [sendMessage, gameOn, room, username]);
-
-	useEffect(() => {
-		const checkSocket = () => {
-			if (socket === null) {
-				router.push("/");
-			}
-		};
-
-		checkSocket();
-	}, [socket, router]);
-
-	const handleGoHome = () => {
-		sendMessage("leaveRoom", room);
+	const handleLeave = useCallback(() => {
+		leaveRoom(roomName);
 		router.push("/");
+	}, [leaveRoom, roomName, router]);
+
+	const opponents = useMemo(
+		() => room.players.filter((player) => player.socketId !== socketId),
+		[room.players, socketId]
+	);
+
+	const spectrumOf = useCallback(
+		(player) => {
+			const live = spectrums.get(player.socketId);
+			return live ? live.spectrum : player.spectrum;
+		},
+		[spectrums]
+	);
+
+	const scoreOf = useCallback(
+		(player) => {
+			const live = spectrums.get(player.socketId);
+			return live ? live.score : player.score;
+		},
+		[spectrums]
+	);
+
+	const isWinner = Boolean(winner) && winner.socketId === socketId;
+
+	const outcome = () => {
+		if (!game.gameOver) return "";
+		if (isWinner) return "You won!";
+		if (winner) return `You lost — ${winner.username} won.`;
+		return "Game over";
 	};
 
+	if (status !== "ready") {
+		return (
+			<main className="tetris-page tetris-page-centered">
+				<p className="tetris-status">
+					{status === "rejected" ? "Could not join the room." : "Connecting…"}
+				</p>
+			</main>
+		);
+	}
+
 	return (
-		<div>
-			<Button type="button" onClick={handleGoHome} className="mt-2 ms-2">
-				Homepage
-			</Button>
-			<div
-				style={{
-					display: "flex",
-					flexDirection: "row",
-					justifyContent: "space-around",
-					alignItems: "center",
-					columnGap: "3rem",
-				}}
-			>
-				<div className="flex flex-col items-center">
-					<div className="mb-4">
-						<GameStats score={score || 0} />
-					</div>
-					{socket && host === socket.id ? (
-						<>
-							{players.length > 1 && (
-								<p>
-									You are the host. The game start for
-									everyone if you push this button :
-								</p>
-							)}
+		<main className="tetris-page">
+			<header className="tetris-header">
+				<Button type="button" onClick={handleLeave}>
+					Leave room
+				</Button>
+				<div className="tetris-room-info">
+					<span className="tetris-room-name">Room “{roomName}”</span>
+					<span className="tetris-room-mode">{GAME_MODE_LABELS[room.mode]}</span>
+					<span className="tetris-room-players">
+						{room.players.length} player{room.players.length > 1 ? "s" : ""}
+					</span>
+				</div>
+			</header>
+
+			<div className="tetris-layout">
+				<aside className="tetris-sidebar">
+					<GameStats
+						score={game.score}
+						level={game.level}
+						lines={game.lines}
+						username={username}
+					/>
+					<NextPiece piece={game.nextPiece} />
+
+					{isHost ? (
+						<div className="tetris-host-panel">
+							<p className="tetris-host-note">
+								You are the host{room.players.length > 1 ? " — you start the round for everyone." : "."}
+							</p>
+							<div className="tetris-modes">
+								{GAME_MODES.map((mode) => (
+									<Button
+										key={mode}
+										type="button"
+										variant={room.mode === mode ? "default" : "outline"}
+										disabled={room.isRunning}
+										onClick={() => setMode(roomName, mode)}
+									>
+										{GAME_MODE_LABELS[mode]}
+									</Button>
+								))}
+							</div>
 							<Button
-								className="disabled:opacity-50 disabled:cursor-not-allowed w-full"
-								disabled={!allPlayersDone}
-								onClick={handleStart}
+								type="button"
+								className="w-full"
+								disabled={!allPlayersDone || room.isRunning}
+								onClick={() => startGame(roomName)}
 							>
-								Start Game / Restart
+								{game.lines > 0 || game.gameOver ? "Restart game" : "Start game"}
 							</Button>
-						</>
+						</div>
 					) : (
-						<>
-							{!gameOn && (
-								<p>Waiting for the host to start the game.</p>
-							)}
-						</>
+						!game.running && <p className="tetris-waiting">Waiting for the host to start the game.</p>
 					)}
-				</div>
-				<div>
-					<Grid grid={currentGrid} isOpponent={false} />
-					{socket && (
-						<h2 className="text-center font-semibold">
-							{gameOver.get(socket.id)
-								? winner && winner == socket.id
-									? "You won"
-									: "You lost"
-								: ""}
-						</h2>
-					)}
-				</div>
-				<div className="grid-rows items-center">
-					{players
-						?.filter((player) => player.socketId !== socket.id)
-						.map((player, index, array) => (
-							<React.Fragment key={player.socketId}>
-								<div className="flex flex-col items-center">
-									<h4>{player.username}</h4>
-									<Grid
-										grid={
-											grids.get(player.socketId) ??
-											defaultGrid
-										}
-										isOpponent={true}
-									/>
-									<p>
-										Score:{" "}
-										{scores.get(player.socketId) ?? "0"}{" "}
-										{gameOver.get(player.socketId)
-											? winner && winner === player.socketId
-												? " - Won"
-												: " - Lost"
-											: ""}
-									</p>
-								</div>
-								{array.length > 1 &&
-									index < array.length - 1 && (
-										<div
-											className="h-px w-full bg-gray-300 my-2"
-											style={{
-												display: "block",
-											}}
-										/>
-									)}
-							</React.Fragment>
+
+					<div className="tetris-controls">
+						<h3 className="tetris-controls-title">Controls</h3>
+						<ul className="tetris-controls-list">
+							<li><span>←  →</span> Move</li>
+							<li><span>↑</span> Rotate</li>
+							<li><span>↓</span> Soft drop</li>
+							<li><span>Space</span> Hard drop</li>
+						</ul>
+					</div>
+				</aside>
+
+				<section className="tetris-board">
+					<Grid grid={game.grid} />
+					<h2 className="tetris-outcome">{outcome()}</h2>
+				</section>
+
+				<aside className="tetris-opponents">
+					<h3 className="tetris-opponents-title">
+						{opponents.length > 0 ? "Opponents" : "No opponent yet"}
+					</h3>
+					<div className="tetris-opponents-list">
+						{opponents.map((player) => (
+							<div key={player.socketId} className="tetris-opponent">
+								<span className="tetris-opponent-name">
+									{player.username}
+									{player.isHost ? " (host)" : ""}
+								</span>
+								<Spectrum spectrum={spectrumOf(player)} />
+								<span className="tetris-opponent-score">
+									{scoreOf(player)}
+									{winner && winner.socketId === player.socketId ? " — won" : ""}
+								</span>
+							</div>
 						))}
-				</div>
+					</div>
+					<Leaderboard entries={leaderboard} />
+				</aside>
 			</div>
-		</div>
+		</main>
 	);
 };
 

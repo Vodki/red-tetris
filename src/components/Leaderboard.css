@@ -1,0 +1,56 @@
+.leaderboard {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	padding: 0.9rem 1rem;
+	border: 1px solid #d8dbe2;
+	border-radius: 8px;
+	background: #ffffff;
+	min-width: 220px;
+}
+
+.leaderboard-title {
+	font-size: 0.85rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #6b7280;
+}
+
+.leaderboard-empty {
+	font-size: 0.85rem;
+	color: #9ca3af;
+}
+
+.leaderboard-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+}
+
+.leaderboard-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 0.6rem;
+	font-size: 0.9rem;
+}
+
+.leaderboard-rank {
+	flex: 0 0 1.4rem;
+	color: #9ca3af;
+	font-variant-numeric: tabular-nums;
+}
+
+.leaderboard-name {
+	flex: 1 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.leaderboard-score {
+	flex: 0 0 auto;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}

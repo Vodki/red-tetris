@@ -1,0 +1,25 @@
+.spectrum {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid #3a3f4b;
+	background: #10131a;
+	padding: 2px;
+	border-radius: 3px;
+}
+
+.spectrum-row {
+	display: flex;
+	flex-direction: row;
+}
+
+.spectrum-cell {
+	width: 10px;
+	height: 10px;
+	box-sizing: border-box;
+	border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.spectrum-cell-filled {
+	background-color: #8b93a5;
+	border-color: #aab2c4;
+}

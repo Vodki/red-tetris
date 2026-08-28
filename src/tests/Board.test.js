@@ -1,65 +1,60 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { Board } from '../game/Board.js'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { Board } from '../game/Board.js';
+import { PENALTY } from '../game/pure/board.js';
 
 describe('Board', () => {
-  let board
+  let board;
+
   beforeEach(() => {
-    board = new Board()
-  })
+    board = new Board();
+  });
 
-  it('initializes a 20×10 grid filled with 0', () => {
-    expect(board.grid.length).toBe(20)
-    expect(board.grid[0].length).toBe(10)
-    for (const row of board.grid) {
-      for (const cell of row) {
-        expect(cell).toBe(0)
-      }
-    }
-  })
+  it('starts as an empty 20x10 field', () => {
+    expect(board.rows).toBe(20);
+    expect(board.cols).toBe(10);
+    expect(board.grid.every((row) => row.every((cell) => cell === 0))).toBe(true);
+    expect(board.spectrum()).toEqual(Array(10).fill(0));
+  });
 
-  it('fillBoard(x,y,color) sets only that cell', () => {
-    board.fillBoard(3, 4, 7)
-    expect(board.grid[4][3]).toBe(7)
-    expect(board.grid[4][2]).toBe(0)
-    expect(board.grid[3][3]).toBe(0)
-  })
+  it('gridCopy hands out an independent grid', () => {
+    const copy = board.gridCopy();
+    copy[0][0] = 9;
+    expect(board.grid[0][0]).toBe(0);
+  });
 
-  it('lineIsEmpty and lineIsFull detect correctly', () => {
-    expect(board.lineIsEmpty(0)).toBe(true)
-    expect(board.lineIsFull(0)).toBe(false)
-    board.grid[0].fill(5)
-    expect(board.lineIsEmpty(0)).toBe(false)
-    expect(board.lineIsFull(0)).toBe(true)
-  })
+  it('locks blocks into the pile', () => {
+    board.lock([{ x: 2, y: 19 }], 4);
+    expect(board.grid[19][2]).toBe(4);
+    expect(board.spectrum()[2]).toBe(1);
+    expect(board.isValid([{ x: 2, y: 19 }])).toBe(false);
+  });
 
-  it('clearFullLines removes full lines and shifts grid down', () => {
-    board.grid[19].fill(1)
-    board.grid[18].fill(1)
-    const removed = board.clearFullLines()
-    expect(removed).toBe(2)
-    expect(board.grid.length).toBe(20)
-    expect(board.grid[0].every(c => c === 0)).toBe(true)
-    expect(board.grid[1].every(c => c === 0)).toBe(true)
-  })
+  it('reports full and empty lines', () => {
+    expect(board.lineIsEmpty(0)).toBe(true);
+    board.grid = board.grid.map((row, y) => (y === 19 ? Array(10).fill(1) : row));
+    expect(board.lineIsFull(19)).toBe(true);
+  });
 
-  it('addPenality shifts rows up and bottom rows become -1, returns 1', () => {
-    const result = board.addPenality(3)
-    expect(result).toBe(1)
-    for (let y = 17; y < 20; y++) {
-      expect(board.grid[y].every(c => c === -1)).toBe(true)
-    }
-    for (let y = 0; y < 17; y++) {
-      expect(board.grid[y].every(c => c === 0)).toBe(true)
-    }
-  })
+  it('clears complete lines', () => {
+    board.grid = board.grid.map((row, y) => (y >= 18 ? Array(10).fill(1) : row));
+    expect(board.clearFullLines()).toBe(2);
+    expect(board.spectrum()).toEqual(Array(10).fill(0));
+  });
 
-  it('addPenality returns 0 and does nothing if top rows are non-empty', () => {
-    board.grid[0][0] = 1
-    const copy = board.grid.map(r => [...r])
-    const result = board.addPenality(2)
-    expect(result).toBe(0)
-    for (let y = 0; y < 20; y++) {
-      expect(board.grid[y]).toEqual(copy[y])
-    }
-  })
-})
+  it('adds penalty lines and survives while there is room', () => {
+    expect(board.addPenalty(3)).toBe(true);
+    expect(board.grid[19]).toEqual(Array(10).fill(PENALTY));
+    expect(board.clearFullLines()).toBe(0);
+  });
+
+  it('signals a top-out when the penalty pushes blocks out', () => {
+    board.lock([{ x: 0, y: 0 }], 2);
+    expect(board.addPenalty(1)).toBe(false);
+  });
+
+  it('renders the pile with the falling piece and its landing preview', () => {
+    const rendered = board.render([{ x: 0, y: 0 }], 3);
+    expect(rendered[0][0]).toBe(3);
+    expect(rendered[19][0]).toBe(9);
+  });
+});

@@ -1,201 +1,159 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+	adjectives,
+	animals,
+	colors,
+	uniqueNamesGenerator,
+} from "unique-names-generator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState, useEffect } from "react";
 import { useSocket } from "@/context/SocketContext";
-import { useRouter } from "next/navigation";
-import {
-	uniqueNamesGenerator,
-	adjectives,
-	colors,
-	animals,
-} from "unique-names-generator";
-import { toast } from "sonner";
+import { useToast } from "@/components/ui/toast";
+import { GAME_MODE_LABELS } from "@/game/pure/rules";
+import "./page.css";
 
-export default function Home() {
-	const { sendMessage, sendWithPromise } = useSocket();
-	const router = useRouter();
-	const [username, setUsername] = useState("");
-	const [newUsername, setNewUsername] = useState("");
-	const [room, setRoom] = useState("");
-	const [usernameSend, setUsernameSend] = useState(false);
-	const [isChangingUsername, setIsChangingUsername] = useState(false);
-	const [key, setKey] = useState(0); 
+export const NAME_PATTERN = /^[a-zA-Z0-9_-]{1,20}$/;
+export const USERNAME_PATTERN = /^[a-zA-Z0-9_-]{1,30}$/;
 
-	const roomNameRegex = /^[a-zA-Z0-9]+$/;
-
-	useEffect(() => {
-		setUsername("");
-		setNewUsername("");
-		setRoom("");
-		setUsernameSend(false);
-		setIsChangingUsername(false);
-		setKey((prevKey) => prevKey + 1);
-	  }, []);
-
-	const roomCreation = async () => {
-		if (!roomNameRegex.test(room)) {
-			toast.error("Room name can only contain alphanum characters.");
-			return;
-		}
-		try {
-			const canCreate = await sendWithPromise("newRoom", room);
-			if (canCreate == true) {
-				router.push(`${room}/${username}`);
-			}
-		} catch (error) {
-			console.error(error.message);
-		}
-	};
-
-	const roomJoin = async () => {
-		if (!roomNameRegex.test(room)) {
-			toast.error("Room name can only contain alphanum characters.");
-			return;
-		}
-		try {
-			const canJoin = await sendWithPromise("joinRoom", room);
-			if (canJoin == true) {
-				router.push(`${room}/${username}`);
-			}
-		} catch (error) {
-			console.error(error.message);
-		}
-	};
-
-	const handleSubmit = (e) => {
-		e.preventDefault();
-		if (username.trim()) {
-			setUsernameSend(true);
-			sendMessage("setUsername", username);
-		}
-	};
-
-	const handleChangeUsername = () => {
-		if (newUsername.trim()) {
-			sendMessage("setUsername", newUsername);
-			setUsername(newUsername);
-			setNewUsername("");
-			setIsChangingUsername(false);
-		}
-	};
-
-	const handleGeneratePseudo = () => {
-		const generatedName =
-			uniqueNamesGenerator({
-				dictionaries: [adjectives, colors, animals],
+/**
+ * A random player name that the server will always accept.
+ *
+ * Three dictionary words can exceed the 30 character limit, so shorter
+ * combinations are tried in turn until one fits.
+ */
+export const generateUsername = () => {
+	const suffix = String(Math.floor(Math.random() * 90 + 10));
+	const candidates = [
+		[adjectives, colors, animals],
+		[colors, animals],
+		[animals],
+	].map(
+		(dictionaries) =>
+			`${uniqueNamesGenerator({
+				dictionaries,
 				separator: "_",
 				style: "capital",
-				length: 3,
-			}) + Math.floor(Math.random() * 90 + 10);
+				length: dictionaries.length,
+			})}${suffix}`
+	);
 
-		setUsername(generatedName);
+	return candidates.find((name) => USERNAME_PATTERN.test(name)) || `Player${suffix}`;
+};
+
+/**
+ * Lobby. It never talks to the game itself: it only builds the
+ * `/<room>/<player_name>` URL, which is where a game is actually joined.
+ */
+export default function Home() {
+	const router = useRouter();
+	const toast = useToast();
+	const { rooms, connected } = useSocket();
+	const [username, setUsername] = useState("");
+	const [room, setRoom] = useState("");
+
+	useEffect(() => {
+		setUsername(generateUsername());
+	}, []);
+
+	const goToRoom = useCallback(
+		(roomName) => {
+			if (!USERNAME_PATTERN.test(username)) {
+				toast.error("Player names may only contain letters, digits, - and _ (max 30).");
+				return;
+			}
+			if (!NAME_PATTERN.test(roomName)) {
+				toast.error("Room names may only contain letters, digits, - and _ (max 20).");
+				return;
+			}
+			router.push(`/${encodeURIComponent(roomName)}/${encodeURIComponent(username)}`);
+		},
+		[router, toast, username]
+	);
+
+	const handleSubmit = (event) => {
+		event.preventDefault();
+		goToRoom(room);
 	};
 
-	if (!username.trim() || !usernameSend) {
-		return (
-			<div key={key} className="flex justify-center items-center h-screen">
-				<div className="flex flex-col items-center gap-4 w-1/3 p-4 border border-gray-300 rounded-lg shadow-md">
-					<h1 className="text-4xl text-center">
-						Welcome to Red Tetris
-					</h1>
-					<div className="w-full item-center gap-1.5">
-						<Label htmlFor="please choose a username">
-							Please choose a username
-						</Label>
-						<form onSubmit={handleSubmit}>
-							<div className="flex w-full items-center space-x-2">
-								<Input
-									className="border-gray-950"
-									placeholder="Username"
-									value={username}
-									onChange={(e) =>
-										setUsername(e.target.value)
-									}
-									maxLength={30}
-								/>
-								<Button
-									onClick={handleGeneratePseudo}
-									type="button"
-								>
-									Create a random Username
-								</Button>
-								<Button
-									className="disabled:opacity-50 disabled:cursor-not-allowed"
-									disabled={!username.trim()}
-									type="submit"
-								>
-									Submit
-								</Button>
-							</div>
-						</form>
-					</div>
-				</div>
-			</div>
-		);
-	}
-
 	return (
-		<div key={key} className="flex justify-center items-center h-screen">
-			<div className="flex flex-col items-center gap-4 w-1/3 p-4 border border-gray-300 rounded-lg shadow-md">
-				<h1 className="text-4xl text-center">
-					Welcome to Red Tetris, {username}
-				</h1>
-				<div className="flex w-full items-center space-x-2">
-					<Input
-						className="border-gray-950"
-						placeholder="Room"
-						value={room}
-						onChange={(e) => setRoom(e.target.value)}
-					/>
-					<Button
-						className="disabled:opacity-50 disabled:cursor-not-allowed"
-						disabled={!room.trim()}
-						onClick={roomCreation}
-					>
-						Create a room
-					</Button>
-					<Button
-						className="disabled:opacity-50 disabled:cursor-not-allowed"
-						disabled={!room.trim()}
-						onClick={roomJoin}
-					>
-						Join a room
-					</Button>
-				</div>
-				<div className="flex w-full items-center space-x-2">
-					{isChangingUsername ? (
-						<Input
-							className="border-gray-950"
-							placeholder="New Username"
-							value={newUsername}
-							onChange={(e) => setNewUsername(e.target.value)}
-							onBlur={() => setIsChangingUsername(false)}
-							maxLength={30}
-						/>
+		<main className="lobby">
+			<section className="lobby-card">
+				<h1 className="lobby-title">Red Tetris</h1>
+				<p className="lobby-subtitle">
+					Pick a name, pick a room. The first player in a room hosts it.
+				</p>
+
+				<form className="lobby-form" onSubmit={handleSubmit}>
+					<div className="lobby-field">
+						<Label htmlFor="username">Player name</Label>
+						<div className="lobby-row">
+							<Input
+								id="username"
+								placeholder="Player name"
+								value={username}
+								maxLength={30}
+								onChange={(event) => setUsername(event.target.value)}
+							/>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => setUsername(generateUsername())}
+							>
+								Random
+							</Button>
+						</div>
+					</div>
+
+					<div className="lobby-field">
+						<Label htmlFor="room">Room</Label>
+						<div className="lobby-row">
+							<Input
+								id="room"
+								placeholder="Room name"
+								value={room}
+								maxLength={20}
+								onChange={(event) => setRoom(event.target.value)}
+							/>
+							<Button type="submit" disabled={!room.trim() || !username.trim()}>
+								Play
+							</Button>
+						</div>
+					</div>
+				</form>
+
+				<div className="lobby-rooms">
+					<h2 className="lobby-rooms-title">
+						{connected ? "Open rooms" : "Connecting to the server…"}
+					</h2>
+					{rooms.length === 0 ? (
+						<p className="lobby-empty">No room yet — create the first one.</p>
 					) : (
-						<Input
-							className="border-gray-950"
-							placeholder="New Username"
-							value={username}
-							onClick={() => setIsChangingUsername(true)}
-							readOnly
-						/>
+						<ul className="lobby-rooms-list">
+							{rooms.map((openRoom) => (
+								<li key={openRoom.name} className="lobby-room">
+									<span className="lobby-room-name">{openRoom.name}</span>
+									<span className="lobby-room-meta">
+										{openRoom.players} player{openRoom.players > 1 ? "s" : ""} ·{" "}
+										{GAME_MODE_LABELS[openRoom.mode] || openRoom.mode}
+									</span>
+									<Button
+										type="button"
+										variant="outline"
+										disabled={openRoom.isRunning}
+										onClick={() => goToRoom(openRoom.name)}
+									>
+										{openRoom.isRunning ? "In game" : "Join"}
+									</Button>
+								</li>
+							))}
+						</ul>
 					)}
-					<Button onClick={handleGeneratePseudo}>
-						Recreate a random Username
-					</Button>
-					<Button
-						className="disabled:opacity-50 disabled:cursor-not-allowed"
-						disabled={!newUsername.trim()}
-						onClick={handleChangeUsername}
-					>
-						Change Username
-					</Button>
 				</div>
-			</div>
-		</div>
+			</section>
+		</main>
 	);
 }

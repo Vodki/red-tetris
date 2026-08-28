@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# persisted leaderboard (bonus)
+.scores.json
+
+# the subject itself, kept locally but out of the repo
+en.subject.pdf

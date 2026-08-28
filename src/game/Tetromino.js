@@ -1,91 +1,84 @@
+import {
+  PIECE_COLORS,
+  PIECE_IDS,
+  blocksAt,
+  boundsOf,
+  colorOf,
+  nextRotation,
+  previousRotation,
+  randomPieceId,
+  rotationsOf,
+  shapeOf,
+  spawnOf,
+} from './pure/pieces.js';
+
+/**
+ * Server side model of a tetrimino.
+ *
+ * The subject asks the server to be object oriented with, at least, a `Piece`
+ * class — while the actual board/piece maths lives in the pure modules this
+ * class only delegates to.
+ */
 export class Piece {
-    constructor(id, rotations, position, color, rotationIndex) {
-      this.id = id;
-      this.rotations = rotations;
-      this.rotationIndex = 0;
-      this.position = position;
-      this.color = color;
-    }
-  
-    get currentShape() {
-      return this.rotations[this.rotationIndex % this.rotations.length];
-    }
-  
-    rotate() {
-      this.rotationIndex = (this.rotationIndex + 1) % this.rotations.length;
-    }
-  
-    clone() {
-      let t = new Piece(
-        this.id,
-        structuredClone(this.rotations),
-        structuredClone(this.position),
-        this.color,
-      );
-      t.rotationIndex = this.rotationIndex;
-      return t;
-    }
+  constructor(id, position = spawnOf(id), rotationIndex = 0) {
+    this.id = id;
+    this.color = colorOf(id);
+    this.position = { ...position };
+    this.rotationIndex = rotationIndex;
+  }
+
+  get rotations() {
+    return rotationsOf(this.id);
+  }
+
+  get currentShape() {
+    return shapeOf(this.id, this.rotationIndex);
+  }
+
+  /** Absolute board coordinates currently occupied by the piece. */
+  get blocks() {
+    return blocksAt(this.id, this.rotationIndex, this.position);
+  }
+
+  rotate() {
+    this.rotationIndex = nextRotation(this.id, this.rotationIndex);
+    return this;
+  }
+
+  rotateBack() {
+    this.rotationIndex = previousRotation(this.id, this.rotationIndex);
+    return this;
+  }
+
+  moveBy(dx, dy) {
+    this.position = { x: this.position.x + dx, y: this.position.y + dy };
+    return this;
+  }
+
+  clone() {
+    return new Piece(this.id, this.position, this.rotationIndex);
+  }
+
+  /** Minimal payload sent to the client for the "next piece" preview. */
+  serialize() {
+    const shape = this.currentShape;
+    return {
+      id: this.id,
+      color: this.color,
+      shape,
+      bounds: boundsOf(shape),
+    };
+  }
 }
 
-export function newRandomTetromino() {
-  const index = Math.floor(Math.random() * AllTetrominoes.length);
-  const original = AllTetrominoes[index];
-  const clone = original.clone();
-  clone.rotationIndex = original.rotations.length * 1000;
-  return clone;
-}
+/**
+ * Creates a random piece. `random` is injectable so the sequence can be made
+ * deterministic in the tests.
+ */
+export const newRandomTetromino = (random = Math.random) =>
+  new Piece(randomPieceId(random));
 
-export const AllTetrominoes = [
-    new Piece('I',
-      [
-        [{x:0,y:-1}, {x:0,y:0}, {x:0,y:1}, {x:0,y:2}],
-        [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:2,y:0}]
-      ],
-      {x:4,y:1}, 1,
-    ),
-    new Piece('J',
-      [
-        [{x:-1,y:-1}, {x:-1,y:0}, {x:0,y:0}, {x:1,y:0}],
-        [{x:0,y:-1}, {x:0,y:0}, {x:0,y:1}, {x:1,y:-1}],
-        [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:1,y:1}],
-        [{x:-1,y:1}, {x:0,y:-1}, {x:0,y:0}, {x:0,y:1}]
-      ],
-      {x:4,y:1}, 2
-    ),
-    new Piece('L', 
-      [
-        [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:1,y:-1}],
-        [{x:0,y:-1}, {x:0,y:0}, {x:0,y:1}, {x:1,y:1}],
-        [{x:-1,y:1}, {x:-1,y:0}, {x:0,y:0}, {x:1,y:0}],
-        [{x:-1,y:-1}, {x:0,y:-1}, {x:0,y:0}, {x:0,y:1}]
-      ],
-      {x:4,y:1}, 3
-    ),
-    new Piece('O', 
-      [[{x:0,y:0}, {x:1,y:0}, {x:0,y:1}, {x:1,y:1}]],
-      {x:4,y:0}, 4
-    ),
-    new Piece('S',
-      [
-        [{x:0,y:0}, {x:1,y:0}, {x:-1,y:1}, {x:0,y:1}],
-        [{x:0,y:-1}, {x:0,y:0}, {x:1,y:0}, {x:1,y:1}]
-      ],
-      {x:4,y:0}, 5
-    ),
-    new Piece('T',
-      [
-        [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:0,y:1}],
-        [{x:0,y:-1}, {x:0,y:0}, {x:1,y:0}, {x:0,y:1}],
-        [{x:0,y:-1}, {x:-1,y:0}, {x:0,y:0}, {x:1,y:0}],
-        [{x:0,y:-1}, {x:-1,y:0}, {x:0,y:0}, {x:0,y:1}]
-      ],
-      {x:4,y:0}, 6
-    ),
-    new Piece('Z',
-      [
-        [{x:-1,y:0}, {x:0,y:0}, {x:0,y:1}, {x:1,y:1}],
-        [{x:1,y:-1}, {x:0,y:0}, {x:1,y:0}, {x:0,y:1}]
-      ],
-      {x:4,y:0}, 7
-    )
-  ];
+/** One pristine instance of every tetrimino, in the canonical order. */
+export const AllTetrominoes = PIECE_IDS.map((id) => new Piece(id));
+
+export { PIECE_IDS, PIECE_COLORS };

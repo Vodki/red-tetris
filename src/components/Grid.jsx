@@ -1,22 +1,25 @@
 import React from "react";
 import "./Grid.css";
 
-const Grid = React.memo(({ grid, isOpponent }) => (
-	<div className="grid">
+/**
+ * The player's own field. Pure presentation: it renders exactly the grid the
+ * server sent. Flexbox rows and cells — no <table>, no canvas, no SVG.
+ */
+const Grid = React.memo(({ grid = [] }) => (
+	<div className="grid" aria-label="playing field">
 		{grid.map((row, rowIndex) => (
 			<div key={rowIndex} className="row">
 				{row.map((cell, cellIndex) => (
 					<div
 						key={cellIndex}
-						className={`
-							${isOpponent ? "opponent-cell" : "cell"}
-							${cell !== 0 ? (isOpponent ? "opponent-filled" : `color-${cell}`) : ""}
-						  `.trim()}
+						className={`cell${cell !== 0 ? ` color-${cell}` : ""}`}
 					/>
 				))}
 			</div>
 		))}
 	</div>
 ));
+
+Grid.displayName = "Grid";
 
 export default Grid;

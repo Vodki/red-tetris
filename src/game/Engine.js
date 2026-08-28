@@ -1,71 +1,96 @@
 import { Board } from './Board.js';
 import { newRandomTetromino } from './Tetromino.js';
+import {
+  DEFAULT_MODE,
+  levelForLines,
+  penaltyForLines,
+  pileIsHidden,
+  scoreForLines,
+  speedForLevel,
+} from './pure/rules.js';
 
-const ROWS = 20;
-const COLS = 10;
-const INITIAL_SPEED = 500;
-
-export class Player{
+/**
+ * Server side model of a player.
+ *
+ * Owns one board, one falling piece and the socket that drives them. All the
+ * board/piece maths is delegated to `Board` and to the pure modules.
+ */
+export class Player {
+  /**
+   * @param socket      the player's socket.io socket
+   * @param isHost      whether this player currently hosts the room
+   * @param tetrominos  the *shared* piece sequence owned by the room, so that
+   *                    every player of a game receives the very same pieces,
+   *                    in the same order, at the same coordinates
+   */
   constructor(socket, isHost, tetrominos) {
-    this.tetrominos = tetrominos
-    this.reset()
     this.socket = socket;
-    this.socketId = socket.id
-    this.intervalId = null;
+    this.socketId = socket.id;
+    this.tetrominos = tetrominos;
     this.username = null;
-    this.isRunning = false;
     this.room = null;
     this.isHost = isHost;
+    this.intervalId = null;
+    this.isRunning = false;
 
+    this.reset();
     this.initializeSocketHandlers();
   }
 
-  disconnect() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId)
-      this.intervalId = null
-    }
-    if (this.room == null) {
-      return
-    } else if (this.room.engines.size == 1) {
-      this.socket.leave(this.room.name)
-      this.room = null;
-      return;
-    } else if (this.room.host != null && this.room.host == this.socketId) {
-      const newHostFound = false
-      this.room.engines.forEach((engine) => {
-        if (engine.room != null && (!newHostFound && engine.socketId != engine.room.host)) {
-          engine.room.host = engine.socketId
-          this.isHost = true
-        }
-      })
-    }
-    this.room.engines.delete(this.socketId)
-    this.room.roomUpdate()
-    this.socket.leave(this.room.name)
+  get mode() {
+    return this.room ? this.room.mode : DEFAULT_MODE;
   }
 
-  sendPenality(linesNb) {
-    this.room.engines.forEach((engine) => {
-      if (engine.socketId == this.socketId || engine.isRunning == false) {
-        return;
-      } else if(!engine.board.addPenality(linesNb)) {
-        engine.isRunning = false;
-      }
-      engine.sendGameShadow();
-    })
+  /** Resets the field, the score and the piece cursor for a new round. */
+  reset() {
+    this.board = new Board();
+    this.pieceNb = 0;
+    this.current = this.pieceAt(0);
+    this.gameOver = false;
+    this.landed = false;
+    this.score = 0;
+    this.level = 1;
+    this.clearedLines = 0;
+  }
+
+  /**
+   * Returns a copy of the nth piece of the shared sequence, extending that
+   * sequence when needed. Because the array is shared by every player of the
+   * room, they all walk through the exact same pieces.
+   */
+  pieceAt(index) {
+    while (this.tetrominos.length <= index + 1) {
+      this.tetrominos.push(newRandomTetromino());
+    }
+    return this.tetrominos[index].clone();
+  }
+
+  get nextPiece() {
+    return this.pieceAt(this.pieceNb + 1);
   }
 
   initializeSocketHandlers() {
     this.socket.on('gameInput', (command) => {
-      if (!this.isRunning) return;
-      
-      switch(command) {
-        case 'Rotate': this.rotateCurrent(); break;
-        case 'MoveLeft': this.moveLeft(); break;
-        case 'MoveRight': this.moveRight(); break;
-        case 'MoveDown': this.moveDown(); break;
-        case 'HardDrop': this.hardDrop(); break;
+      if (!this.isRunning || this.gameOver) return;
+
+      switch (command) {
+        case 'Rotate':
+          this.rotateCurrent();
+          break;
+        case 'MoveLeft':
+          this.moveLeft();
+          break;
+        case 'MoveRight':
+          this.moveRight();
+          break;
+        case 'MoveDown':
+          this.moveDown();
+          break;
+        case 'HardDrop':
+          this.hardDrop();
+          break;
+        default:
+          break;
       }
     });
   }
@@ -73,288 +98,236 @@ export class Player{
   start() {
     if (this.isRunning) return;
     this.isRunning = true;
-    
-    this.intervalId = setInterval(() => this.tick(), INITIAL_SPEED);
+    this.gameOver = false;
+    this.scheduleTick();
     this.sendGameState();
+    this.sendSpectrum();
+  }
+
+  /** (Re)arms the falling timer at the speed of the current level and mode. */
+  scheduleTick() {
+    if (this.intervalId) clearInterval(this.intervalId);
+    this.intervalId = setInterval(
+      () => this.tick(),
+      speedForLevel(this.level, this.mode)
+    );
   }
 
   stop() {
-    clearInterval(this.intervalId);
+    if (this.intervalId) clearInterval(this.intervalId);
     this.intervalId = null;
     this.isRunning = false;
   }
 
-  reset() {
-    this.board = new Board();
-    this.current = this.tetrominos[0].clone();
-    this.gameOver = false;
-    this.score = 0;
-    this.level = 1;
-    this.clearedLines = 0;
-    this.pieceNb = 0;
-  }
-
-  calculateScore(lines) {
-    switch(lines) {
-      case 1: return 100 * this.level;
-      case 2: return 300 * this.level;
-      case 3: return 500 * this.level;
-      case 4: return 800 * this.level;
-      default: return 0;
-    }
-  }
-
+  /**
+   * One frame. A piece that touches the pile is not locked immediately: it
+   * stays movable for one extra frame, which is what lets the player make the
+   * last-moment adjustments the subject asks for.
+   */
   tick() {
-    if (this.gameOver) return;
+    if (this.gameOver || !this.isRunning) return;
 
     if (this.canMoveDown()) {
-      this.current.position.y++;
+      this.current.moveBy(0, 1);
+      this.landed = false;
+    } else if (!this.landed) {
+      this.landed = true;
+    } else {
+      this.lockAndSpawn();
     }
-    else {
-      this.lockCurrent();
-      const n = this.board.clearFullLines();
-      if (n > 1) {
-        this.sendPenality(n - 1);
-      }
-      this.score += this.calculateScore(n);
-      if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
-        this.level++
-      }
-      this.spawnNewTetromino()
-      if (!this.isValidPosition(this.current)) {
-        this.gameOver = true;
-        this.handleGameOver();
-      }
-    }
-    this.sendGameShadow();
+
     this.sendGameState();
-  }
-
-  lockCurrent() {
-    const shape = this.current.currentShape;
-    for (const block of shape) {
-      const x = this.current.position.x + block.x;
-      const y = this.current.position.y + block.y;
-      if (y >= 0) {
-        this.board.fillBoard(x, y, this.current.color);
-      }
-    }
-
-    
-  }
-
-  spawnNewTetromino() {
-    if (this.pieceNb == this.tetrominos.length - 1) {
-      this.tetrominos.push(newRandomTetromino());
-    }
-    this.pieceNb++;
-    this.current = this.tetrominos[this.pieceNb].clone();
-    
-    if (!this.isValidPosition(this.current)) {
-      this.gameOver = true;
-      this.handleGameOver();
-    }
-  }
-
-  updateGameState(clearedLines) {
-    this.clearedLines += clearedLines;
-    this.score += this.calculateScore(clearedLines);
-    
-    if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
-      this.level++;
-    }
-  }
-
-  isValidPosition(tetromino) {
-    const shape = tetromino.currentShape;
-    for (const block of shape) {
-      const x = tetromino.position.x + block.x;
-      const y = tetromino.position.y + block.y;
-
-      if (x < 0 || x >= COLS) {
-        return false;
-      }
-      if (y >= ROWS) {
-        return false;
-      }
-      if (y >= 0 && this.board.grid[y]?.[x] !== 0) {
-        return false;
-      }
-    }
-
-    return true;
+    this.sendSpectrum();
   }
 
   canMoveDown() {
-    const testPiece = this.current.clone();
-    testPiece.position.y++;
-    const bool = this.isValidPosition(testPiece)
-    if (!bool) {
+    return this.board.isValid(this.current.clone().moveBy(0, 1).blocks);
+  }
+
+  /** Settles the piece, clears lines, punishes the opponents, spawns the next. */
+  lockAndSpawn() {
+    this.board.lock(this.current.blocks, this.current.color);
+
+    const cleared = this.board.clearFullLines();
+    if (cleared > 0) {
+      this.clearedLines += cleared;
+      this.score += scoreForLines(cleared, this.level);
+
+      const level = levelForLines(this.clearedLines);
+      if (level !== this.level) {
+        this.level = level;
+        if (this.isRunning) this.scheduleTick();
+      }
+
+      const penalty = penaltyForLines(cleared);
+      if (penalty > 0) this.sendPenalty(penalty);
     }
-    return bool;
+
+    this.landed = false;
+    this.spawnNewTetromino();
+  }
+
+  spawnNewTetromino() {
+    this.pieceNb += 1;
+    this.current = this.pieceAt(this.pieceNb);
+
+    // The game ends when a new piece can no longer enter the field.
+    if (!this.board.isValid(this.current.blocks)) this.endGame();
+  }
+
+  /** Sends `count` indestructible lines to every opponent still playing. */
+  sendPenalty(count) {
+    if (!this.room) return;
+
+    this.room.engines.forEach((engine) => {
+      if (engine.socketId === this.socketId || !engine.isRunning) return;
+
+      const survived = engine.board.addPenalty(count);
+
+      // The falling piece may now overlap the pile: lift it above the penalty.
+      if (!engine.board.isValid(engine.current.blocks)) {
+        engine.current.moveBy(0, -count);
+      }
+
+      engine.sendGameState();
+      engine.sendSpectrum();
+
+      if (!survived || !engine.board.isValid(engine.current.blocks)) {
+        engine.endGame();
+      }
+    });
+  }
+
+  /**
+   * Applies `mutate`, rolls it back with `revert` when the resulting position
+   * is invalid. Shared by the three "adjust the piece" inputs.
+   */
+  applyMove(mutate, revert) {
+    if (!this.isRunning || this.gameOver) return false;
+
+    mutate();
+    if (!this.board.isValid(this.current.blocks)) {
+      revert();
+      return false;
+    }
+
+    // Moving off the pile gives the player another frame before locking.
+    if (this.canMoveDown()) this.landed = false;
+    this.sendGameState();
+    return true;
   }
 
   rotateCurrent() {
-    const originalRotation = this.current.rotationIndex;
-    this.current.rotate();
-    
-    if (!this.isValidPosition(this.current)) {
-      this.current.rotationIndex = originalRotation;
-    }
-    this.sendGameState();
+    return this.applyMove(
+      () => this.current.rotate(),
+      () => this.current.rotateBack()
+    );
   }
 
   moveLeft() {
-    this.current.position.x--;
-    if (!this.isValidPosition(this.current)) {
-      this.current.position.x++;
-    }
-    this.sendGameState();
+    return this.applyMove(
+      () => this.current.moveBy(-1, 0),
+      () => this.current.moveBy(1, 0)
+    );
   }
 
   moveRight() {
-    this.current.position.x++;
-    if (!this.isValidPosition(this.current)) {
-      this.current.position.x--;
-    }
-    this.sendGameState();
+    return this.applyMove(
+      () => this.current.moveBy(1, 0),
+      () => this.current.moveBy(-1, 0)
+    );
   }
 
+  /** Soft drop: never locks on its own, the next frame does. */
   moveDown() {
+    if (!this.isRunning || this.gameOver) return false;
+
     if (this.canMoveDown()) {
-      this.current.position.y++;
+      this.current.moveBy(0, 1);
+      this.landed = false;
+      this.score += 1;
     } else {
-      this.lockCurrent();
-      const n = this.board.clearFullLines();
-      if (n > 1) {
-        this.sendPenality(n - 1);
-      }
-      this.score += this.calculateScore(n);
-      if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
-        this.level++
-      }
-      this.spawnNewTetromino()
-      if (!this.isValidPosition(this.current)) {
-        this.gameOver = true;
-        this.handleGameOver();
-      }
+      this.landed = true;
     }
-    this.score += this.level
+
     this.sendGameState();
+    return true;
   }
 
+  /** Hard drop: falls all the way down and locks straight away. */
   hardDrop() {
-    let dropDistance = 0;
+    if (!this.isRunning || this.gameOver) return false;
+
+    let distance = 0;
     while (this.canMoveDown()) {
-      this.current.position.y++;
-      dropDistance++;
+      this.current.moveBy(0, 1);
+      distance += 1;
     }
-    this.lockCurrent();
-    const n = this.board.clearFullLines();
-    if (n > 1) {
-      this.sendPenality(n - 1);
-    }
-    this.score += this.calculateScore(n);
-    if (Math.floor((n + this.clearedLines) / 10) > Math.floor(this.clearedLines/10)) {
-      this.level++
-    }
-    this.spawnNewTetromino()
-    if (!this.isValidPosition(this.current)) {
-      this.gameOver = true;
-      this.handleGameOver();
-    }
-    this.score += dropDistance * this.level
+    this.score += distance * 2;
+
+    this.lockAndSpawn();
     this.sendGameState();
+    this.sendSpectrum();
+    return true;
+  }
+
+  /** The grid as its owner sees it. The pile is revealed once the game is over. */
+  getVisualGrid() {
+    const invisible = pileIsHidden(this.mode) && !this.gameOver;
+    return this.board.render(this.current.blocks, this.current.color, {
+      showGhost: true,
+      invisible,
+    });
   }
 
   sendGameState() {
-    const state = {
+    this.socket.emit('GameUpdate', {
       grid: this.getVisualGrid(),
+      spectrum: this.board.spectrum(),
+      nextPiece: this.nextPiece.serialize(),
       score: this.score,
       level: this.level,
-      nextPiece: this.next,
+      lines: this.clearedLines,
       gameOver: this.gameOver,
-    };
-    this.socket.emit('GameUpdate', state);
+      running: this.isRunning,
+    });
   }
 
-  sendGameShadow() {
-    const state = {
-      grid: this.board.grid,
-      score: this.score,
-      level: this.level,
-      nextPiece: this.next,
-      gameOver: this.gameOver,
+  /** Opponents only ever receive the spectrum, never the actual grid. */
+  sendSpectrum() {
+    if (!this.room) return;
+
+    this.room.io.to(this.room.name).emit('SpectrumUpdate', {
       socketId: this.socketId,
-    };
-
-    this.room.io.to(this.room.name).emit('GameShadow', state);
-  }
-
-  getVisualGrid() {
-    const grid = this.board.gridCopy();
-    this.addGhostPiece(grid);
-    this.addCurrentPiece(grid);
-    return grid;
-  }
-
-  addGhostPiece(grid) {
-    const ghost = this.current.clone();
-    while (this.isValidPosition(ghost)) {
-      ghost.position.y++;
-    }
-    ghost.position.y--;
-    
-    ghost.currentShape.forEach(block => {
-      const x = ghost.position.x + block.x;
-      const y = ghost.position.y + block.y;
-      if (y >= 0 && x >= 0 && x < COLS && y < ROWS) {
-        grid[y][x] = 9;
-      }
+      username: this.username,
+      spectrum: this.board.spectrum(),
+      score: this.score,
+      level: this.level,
+      lines: this.clearedLines,
+      gameOver: this.gameOver,
     });
   }
 
-  addCurrentPiece(grid) {
-    this.current.currentShape.forEach(block => {
-      const x = this.current.position.x + block.x;
-      const y = this.current.position.y + block.y;
-      if (y >= 0 && x >= 0 && x < COLS && y < ROWS) {
-        grid[y][x] = this.current.color;
-      }
-    });
-  }
+  endGame() {
+    if (this.gameOver && !this.isRunning) return;
 
-  handleGameOver() {
+    this.gameOver = true;
     this.stop();
-    this.sendGameShadow();
     this.sendGameState();
-    
-    if (this.room.engines.size == 1) {
-      this.room.io.to(this.room.name).emit('allPlayersDone', true);
-      this.room.isRunning = false;
-      return;
-    }
-    
-    const playersLeft = this.room.playersStillPlaying();
-    
-    if (playersLeft == 1) {
-      const winnerId = this.room.lastPlayerSocketId();
-      const winnerEngine = this.room.engines.get(winnerId);
-      
-      if (winnerEngine) {
-        winnerEngine.gameOver = true;  // Marquer le gagnant comme gameOver pour que gameOn passe à false côté client
-        winnerEngine.stop();
-        winnerEngine.sendGameShadow();
-        winnerEngine.sendGameState();
-      }
-      
-      this.room.io.to(this.room.name).emit('Winner', {socketId: winnerId});
-      this.room.io.to(this.room.name).emit('allPlayersDone', true);
-      this.room.isRunning = false;
-    } else if (playersLeft == 0) {
-      this.room.io.to(this.room.name).emit('allPlayersDone', true);
-      this.room.isRunning = false;
-    }
+    this.sendSpectrum();
+
+    if (this.room) this.room.onPlayerFinished(this);
+  }
+
+  /** Leaves the room, letting it deal with host hand-over and end of game. */
+  disconnect() {
+    this.stop();
+
+    const room = this.room;
+    this.room = null;
+    if (!room) return;
+
+    room.removePlayer(this);
+    this.socket.leave(room.name);
   }
 }
-

@@ -1,5 +1,7 @@
 .grid {
-    display: inline-block;
+    display: flex;
+    flex-direction: column;
+    width: fit-content;
     border: 2px solid #333;
     background: #111;
   }
@@ -15,18 +17,7 @@
     box-sizing: border-box;
   }
 
-  .opponent-cell {
-    width: 12px;
-    height: 12px;
-    box-sizing: border-box;
-  }
 
-  .opponent-filled {
-    width: 12px;
-    height: 12px;
-    background-color: grey;
-    box-sizing: border-box;
-  }
   
   .color-1 { /* I-block - Cyan */
     border: 1px solid rgba(255, 255, 255, 0.1);
