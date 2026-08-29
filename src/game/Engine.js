@@ -1,5 +1,5 @@
 import { Board } from './Board.js';
-import { newRandomTetromino } from './Tetromino.js';
+import { Piece, newRandomTetromino } from './Tetromino.js';
 import {
   DEFAULT_MODE,
   levelForLines,
@@ -51,6 +51,10 @@ export class Player {
     this.score = 0;
     this.level = 1;
     this.clearedLines = 0;
+    // Bonus: the piece put aside with the "hold" input, and the once-per-piece
+    // guard that keeps the swap from being spammed.
+    this.held = null;
+    this.holdUsed = false;
   }
 
   /**
@@ -88,6 +92,9 @@ export class Player {
           break;
         case 'HardDrop':
           this.hardDrop();
+          break;
+        case 'Hold':
+          this.holdCurrent();
           break;
         default:
           break;
@@ -170,9 +177,46 @@ export class Player {
   spawnNewTetromino() {
     this.pieceNb += 1;
     this.current = this.pieceAt(this.pieceNb);
+    // A new piece re-arms the hold.
+    this.holdUsed = false;
 
     // The game ends when a new piece can no longer enter the field.
     if (!this.board.isValid(this.current.blocks)) this.endGame();
+  }
+
+  /**
+   * Bonus: "hold". Puts the falling piece aside and brings back the one that
+   * was held before - or takes the next one of the shared sequence the first
+   * time. As in the original game it can only be used once per piece, so it
+   * cannot be turned into an infinite stall.
+   *
+   * The piece comes back at its spawn position and rotation, exactly as if it
+   * had just entered the field.
+   */
+  holdCurrent() {
+    if (!this.isRunning || this.gameOver || this.holdUsed) return false;
+
+    const swapped = this.held;
+    this.held = new Piece(this.current.id);
+
+    if (swapped) {
+      this.current = swapped;
+    } else {
+      this.pieceNb += 1;
+      this.current = this.pieceAt(this.pieceNb);
+    }
+
+    this.holdUsed = true;
+    this.landed = false;
+
+    // The board may have grown too high while the piece was on hold.
+    if (!this.board.isValid(this.current.blocks)) {
+      this.endGame();
+      return false;
+    }
+
+    this.sendGameState();
+    return true;
   }
 
   /** Sends `count` indestructible lines to every opponent still playing. */
@@ -285,6 +329,8 @@ export class Player {
       grid: this.getVisualGrid(),
       spectrum: this.board.spectrum(),
       nextPiece: this.nextPiece.serialize(),
+      heldPiece: this.held ? this.held.serialize() : null,
+      canHold: !this.holdUsed,
       score: this.score,
       level: this.level,
       lines: this.clearedLines,

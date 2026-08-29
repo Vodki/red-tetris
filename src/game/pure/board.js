@@ -3,7 +3,7 @@
  *
  * Same rule as `pieces.js`: no `this`, no mutation of the arguments. Every
  * function returns a brand new grid (or a plain value) so the board state can
- * be reasoned about — and unit-tested — without any hidden side effect.
+ * be reasoned about, and unit-tested, without any hidden side effect.
  */
 
 export const ROWS = 20;
@@ -107,7 +107,7 @@ export const addPenaltyLines = (grid, count) => {
   };
 };
 
-/** Height of the highest block of a column — the building block of a spectrum. */
+/** Height of the highest block of a column - the building block of a spectrum. */
 export const columnHeight = (grid, x) => {
   const y = grid.findIndex((row) => row[x] !== EMPTY);
   return y === -1 ? 0 : grid.length - y;
@@ -140,7 +140,7 @@ export const dropDistance = (grid, blocks) => {
   return distance;
 };
 
-/** Where the piece would land — drawn as a landing preview. */
+/** Where the piece would land - drawn as a landing preview. */
 export const ghostBlocks = (grid, blocks) => {
   const distance = dropDistance(grid, blocks);
   return blocks.map(({ x, y }) => ({ x, y: y + distance }));

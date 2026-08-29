@@ -33,3 +33,8 @@
 	box-sizing: border-box;
 	background-size: cover;
 }
+
+/* Bonus (hold): the slot is greyed out until the swap is available again. */
+.next-piece-dimmed {
+	opacity: 0.45;
+}

@@ -36,6 +36,8 @@ const baseSocketState = () => ({
     grid: createEmptyGrid(),
     spectrum: [],
     nextPiece: null,
+    heldPiece: null,
+    canHold: true,
     score: 0,
     level: 1,
     lines: 0,
@@ -48,14 +50,20 @@ const baseSocketState = () => ({
     mode: 'classic',
     isRunning: false,
     players: [{ socketId: 'me', username: 'Alice', isHost: true, spectrum: [], score: 0 }],
+    spectators: [],
   },
   rooms: [],
   spectrums: new Map(),
   winner: null,
   allPlayersDone: true,
   leaderboard: [],
+  messages: [],
+  spectating: false,
+  roomClosed: false,
   sendInput: vi.fn(),
   enterRoom: vi.fn().mockResolvedValue({ ok: true }),
+  spectate: vi.fn().mockResolvedValue({ ok: true }),
+  sendChat: vi.fn(),
   leaveRoom: vi.fn(),
   startGame: vi.fn(),
   setMode: vi.fn(),
@@ -138,22 +146,33 @@ describe('lobby page', () => {
 
   it('says when no room is open', () => {
     withToasts(<Home />);
-    expect(screen.getByText('No room yet — create the first one.')).toBeDefined();
+    expect(screen.getByText('No room yet - create the first one.')).toBeDefined();
   });
 
   it('lists the open rooms and joins one in a click', async () => {
     const user = userEvent.setup();
     socketState.rooms = [
       { name: 'alpha', players: 2, mode: 'classic', isRunning: false },
-      { name: 'beta', players: 1, mode: 'gravity', isRunning: true },
+      { name: 'beta', players: 1, spectators: 2, mode: 'gravity', isRunning: true },
     ];
     withToasts(<Home />);
 
     expect(screen.getByText('alpha')).toBeDefined();
-    expect(screen.getByText('In game')).toBeDefined();
+    // Bonus: a running room cannot be joined, only watched.
+    expect(screen.getByText('Watch')).toBeDefined();
+    expect(screen.getByText(/2 watching/)).toBeDefined();
 
     await user.click(screen.getByText('Join'));
     expect(push).toHaveBeenCalledWith(expect.stringContaining('/alpha/'));
+  });
+
+  it('sends a click on a running room to its spectator entrance', async () => {
+    const user = userEvent.setup();
+    socketState.rooms = [{ name: 'beta', players: 1, mode: 'classic', isRunning: true }];
+    withToasts(<Home />);
+
+    await user.click(screen.getByText('Watch'));
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('/beta/'));
   });
 });
 
@@ -294,7 +313,7 @@ describe('Tetris', () => {
     socketState.game = { ...socketState.game, gameOver: true };
     socketState.winner = { socketId: 'p2', username: 'Bob' };
     withToasts(<Tetris room="lobby" username="Alice" />);
-    await waitFor(() => expect(screen.getByText('You lost — Bob won.')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('You lost - Bob won.')).toBeDefined());
   });
 
   it('reports a plain game over in solo', async () => {
@@ -310,5 +329,144 @@ describe('Tetris', () => {
     await user.click(await screen.findByText('Leave room'));
     expect(socketState.leaveRoom).toHaveBeenCalledWith('lobby');
     expect(push).toHaveBeenCalledWith('/');
+  });
+
+  describe('hold (bonus)', () => {
+    it('sends the Hold input on C and on Shift', async () => {
+      socketState.game = { ...socketState.game, running: true };
+      withToasts(<Tetris room="lobby" username="Alice" />);
+      await screen.findByLabelText('playing field');
+
+      act(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c' }));
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift' }));
+      });
+
+      expect(socketState.sendInput.mock.calls.map(([command]) => command)).toEqual([
+        'Hold',
+        'Hold',
+      ]);
+    });
+
+    it('shows the hold slot, dimmed once the swap is spent', async () => {
+      socketState.game = {
+        ...socketState.game,
+        heldPiece: { id: 'O', color: 4, shape: [{ x: 0, y: 0 }] },
+        canHold: false,
+      };
+      const { container } = withToasts(<Tetris room="lobby" username="Alice" />);
+
+      // "Hold" also labels the controls cheat-sheet, so target the slot itself.
+      await waitFor(() =>
+        expect(container.querySelector('.next-piece-dimmed')).not.toBeNull()
+      );
+      expect(
+        container.querySelector('.next-piece-dimmed .next-piece-label').textContent
+      ).toBe('Hold');
+    });
+  });
+
+  describe('chat (bonus)', () => {
+    it('shows the room conversation and sends a message', async () => {
+      const user = userEvent.setup();
+      socketState.messages = [
+        { socketId: 'p2', username: 'Bob', text: 'good luck', date: '1' },
+      ];
+      withToasts(<Tetris room="lobby" username="Alice" />);
+
+      await waitFor(() => expect(screen.getByText('good luck')).toBeDefined());
+      await user.type(screen.getByLabelText('chat message'), 'gg');
+      await user.click(screen.getByText('Send'));
+
+      expect(socketState.sendChat).toHaveBeenCalledWith('gg');
+    });
+
+    it('never turns what is typed in the chat into a game input', async () => {
+      const user = userEvent.setup();
+      socketState.game = { ...socketState.game, running: true };
+      withToasts(<Tetris room="lobby" username="Alice" />);
+
+      await user.type(await screen.findByLabelText('chat message'), 'c ');
+
+      expect(socketState.sendInput).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('spectating (bonus)', () => {
+    const runningRefusal = () => {
+      const error = new Error('A game is already running in this room.');
+      error.reason = 'running';
+      return error;
+    };
+
+    it('offers to watch instead of bouncing back to the lobby', async () => {
+      const user = userEvent.setup();
+      socketState.enterRoom = vi.fn().mockRejectedValue(runningRefusal());
+      withToasts(<Tetris room="lobby" username="Alice" />);
+
+      const watch = await screen.findByText('Watch this round');
+      expect(push).not.toHaveBeenCalled();
+
+      await user.click(watch);
+      expect(socketState.spectate).toHaveBeenCalledWith('lobby', 'Alice');
+    });
+
+    it('still goes home when the offer is declined', async () => {
+      const user = userEvent.setup();
+      socketState.enterRoom = vi.fn().mockRejectedValue(runningRefusal());
+      withToasts(<Tetris room="lobby" username="Alice" />);
+
+      await user.click(await screen.findByText('Back to the lobby'));
+      expect(push).toHaveBeenCalledWith('/');
+    });
+
+    it('goes home when the round cannot be watched either', async () => {
+      const user = userEvent.setup();
+      socketState.enterRoom = vi.fn().mockRejectedValue(runningRefusal());
+      socketState.spectate = vi.fn().mockRejectedValue(new Error('Room not found.'));
+      withToasts(<Tetris room="lobby" username="Alice" />);
+
+      await user.click(await screen.findByText('Watch this round'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/'));
+    });
+
+    it('shows every field and no board of its own while watching', async () => {
+      socketState.spectating = true;
+      socketState.room = {
+        ...socketState.room,
+        isRunning: true,
+        players: [
+          { socketId: 'p1', username: 'Alice', isHost: true, spectrum: [2], score: 10 },
+          { socketId: 'p2', username: 'Bob', isHost: false, spectrum: [5], score: 20 },
+        ],
+        spectators: [{ socketId: 'me', username: 'Eve' }],
+      };
+      withToasts(<Tetris room="lobby" username="Eve" />);
+
+      await waitFor(() => expect(screen.getByText('Players')).toBeDefined());
+      expect(screen.queryByLabelText('playing field')).toBeNull();
+      expect(screen.getByText('Alice (host)')).toBeDefined();
+      expect(screen.getByText('Bob')).toBeDefined();
+      expect(screen.getByText('1 watching')).toBeDefined();
+      expect(screen.getByText('Round in progress…')).toBeDefined();
+    });
+
+    it('joins the table once the round is over', async () => {
+      const user = userEvent.setup();
+      socketState.spectating = true;
+      socketState.room = { ...socketState.room, isRunning: false };
+      withToasts(<Tetris room="lobby" username="Eve" />);
+
+      await user.click(await screen.findByText('Join the next round'));
+      expect(socketState.enterRoom).toHaveBeenCalledWith('lobby', 'Eve');
+    });
+
+    it('goes home when the room it watched is closed', async () => {
+      socketState.spectating = true;
+      socketState.roomClosed = true;
+      withToasts(<Tetris room="lobby" username="Eve" />);
+
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/'));
+    });
   });
 });

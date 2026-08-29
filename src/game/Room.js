@@ -12,6 +12,10 @@ export class Game {
     this.name = name;
     this.host = host;
     this.engines = new Map();
+    // Bonus: the people watching the current round without playing it. They
+    // are deliberately kept out of `engines`, so they never count towards the
+    // roster, the start conditions or the end of the game.
+    this.spectators = new Map();
     this.isRunning = false;
     // Whether the round in progress was started by a lone player: a solo game
     // runs until its player tops out, a multiplayer one ends as soon as a
@@ -26,7 +30,7 @@ export class Game {
     this.tetrominos = Game.newSequence();
   }
 
-  /** A fresh shared piece sequence — two pieces are enough to bootstrap. */
+  /** A fresh shared piece sequence - two pieces are enough to bootstrap. */
   static newSequence() {
     return [newRandomTetromino(), newRandomTetromino()];
   }
@@ -44,6 +48,25 @@ export class Game {
     return engine;
   }
 
+  /** Bonus: someone joins the room to watch the round in progress. */
+  addSpectator(socketId, username) {
+    this.spectators.set(socketId, username);
+    this.roomUpdate();
+    return this.spectators.size;
+  }
+
+  removeSpectator(socketId) {
+    const removed = this.spectators.delete(socketId);
+    if (removed) this.roomUpdate();
+    return removed;
+  }
+
+  /** Bonus: in-room chat. Players and spectators share the same channel. */
+  broadcastChat(message) {
+    this.io.to(this.name).emit('chatMessage', message);
+    return message;
+  }
+
   /**
    * Removes a player. If they were the host, one of the remaining players
    * takes over the role; if the room becomes empty it is disposed of.
@@ -54,6 +77,12 @@ export class Game {
     if (this.engines.size === 0) {
       this.isRunning = false;
       this.host = null;
+      // A room with nobody left to play is closed, so the spectators are sent
+      // back to the lobby instead of watching an empty field forever.
+      if (this.spectators.size > 0) {
+        this.io.to(this.name).emit('roomClosed', { name: this.name });
+        this.spectators.clear();
+      }
       if (this.onEmpty) this.onEmpty(this);
       return;
     }
@@ -98,6 +127,10 @@ export class Game {
         lines: engine.clearedLines,
         gameOver: engine.gameOver,
         isRunning: engine.isRunning,
+      })),
+      spectators: [...this.spectators.entries()].map(([socketId, username]) => ({
+        socketId,
+        username,
       })),
     };
   }
@@ -197,6 +230,7 @@ export const listOpenRooms = (rooms) =>
   [...rooms.values()].map((room) => ({
     name: room.name,
     players: room.engines.size,
+    spectators: room.spectators.size,
     mode: room.mode,
     isRunning: room.isRunning,
   }));

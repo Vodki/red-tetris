@@ -3,7 +3,7 @@ import "./Leaderboard.css";
 
 /**
  * Bonus: the persisted best scores, served by the server's scoreboard.
- * Laid out with flexbox — the subject forbids <table>.
+ * Laid out with flexbox - the subject forbids <table>.
  */
 const Leaderboard = ({ entries = [] }) => (
 	<div className="leaderboard">

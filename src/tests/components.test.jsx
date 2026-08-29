@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import Chat from '../components/Chat';
 import GameStats from '../components/GameStats';
 import Grid from '../components/Grid';
 import Leaderboard from '../components/Leaderboard';
@@ -136,6 +137,84 @@ describe('Leaderboard', () => {
   it('says so when nothing was recorded yet', () => {
     render(<Leaderboard />);
     expect(screen.getByText('No score recorded yet.')).toBeDefined();
+  });
+});
+
+describe('NextPiece as the hold slot (bonus)', () => {
+  it('takes another label and can be dimmed', () => {
+    const { container } = render(<NextPiece label="Hold" dimmed />);
+
+    expect(screen.getByText('Hold')).toBeDefined();
+    expect(container.querySelector('.next-piece-dimmed')).not.toBeNull();
+  });
+
+  it('is not dimmed by default', () => {
+    const { container } = render(<NextPiece label="Hold" />);
+    expect(container.querySelector('.next-piece-dimmed')).toBeNull();
+  });
+});
+
+describe('Chat (bonus)', () => {
+  const messages = [
+    { socketId: 'me', username: 'Alice', text: 'hello', date: '1' },
+    { socketId: 'p2', username: 'Eve', text: 'watching', spectator: true, date: '2' },
+  ];
+
+  it('lists the messages, marks ours and flags the spectators', () => {
+    const { container } = render(<Chat messages={messages} selfId="me" />);
+
+    expect(screen.getByText('hello')).toBeDefined();
+    expect(screen.getByText('watching')).toBeDefined();
+    expect(container.querySelectorAll('.chat-message-self')).toHaveLength(1);
+    expect(screen.getByText('Eve 👁')).toBeDefined();
+    expect(container.querySelector('table')).toBeNull();
+  });
+
+  it('says when nothing was said yet', () => {
+    render(<Chat />);
+    expect(screen.getByText('Nothing said yet.')).toBeDefined();
+  });
+
+  it('sends the draft and clears the input', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<Chat messages={[]} onSend={onSend} />);
+
+    const input = screen.getByLabelText('chat message');
+    await user.type(input, '  gg  ');
+    await user.click(screen.getByText('Send'));
+
+    expect(onSend).toHaveBeenCalledWith('gg');
+    expect(input.value).toBe('');
+  });
+
+  it('never sends whitespace', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<Chat messages={[]} onSend={onSend} />);
+
+    await user.type(screen.getByLabelText('chat message'), '   ');
+    expect(screen.getByText('Send').disabled).toBe(true);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('is closed while disconnected', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(<Chat messages={[]} onSend={onSend} disabled />);
+
+    const input = screen.getByLabelText('chat message');
+    expect(input.disabled).toBe(true);
+    await user.click(screen.getByText('Send'));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('survives a submit without a handler', async () => {
+    const user = userEvent.setup();
+    render(<Chat messages={[]} />);
+
+    await user.type(screen.getByLabelText('chat message'), 'hi');
+    await expect(user.click(screen.getByText('Send'))).resolves.not.toThrow();
   });
 });
 

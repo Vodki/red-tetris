@@ -26,8 +26,15 @@ vi.mock('socket.io-client', () => ({
   io: vi.fn(() => fakeSocket),
 }));
 
-const { SocketProvider, useSocket, initialGame, initialRoom, resolveSocketUrl, REQUEST_TIMEOUT } =
-  await import('../context/SocketContext.jsx');
+const {
+  SocketProvider,
+  useSocket,
+  initialGame,
+  initialRoom,
+  resolveSocketUrl,
+  REQUEST_TIMEOUT,
+  MAX_MESSAGES,
+} = await import('../context/SocketContext.jsx');
 const { ToastProvider } = await import('../components/ui/toast.jsx');
 
 let api;
@@ -44,6 +51,9 @@ const Probe = () => {
       <span data-testid="done">{String(api.allPlayersDone)}</span>
       <span data-testid="winner">{api.winner ? api.winner.username : ''}</span>
       <span data-testid="board">{api.leaderboard.length}</span>
+      <span data-testid="messages">{api.messages.length}</span>
+      <span data-testid="spectating">{String(api.spectating)}</span>
+      <span data-testid="closed">{String(api.roomClosed)}</span>
     </div>
   );
 };
@@ -78,6 +88,7 @@ describe('initial state', () => {
       mode: 'classic',
       isRunning: false,
       players: [],
+      spectators: [],
     });
   });
 
@@ -249,5 +260,103 @@ describe('SocketProvider', () => {
     unmount();
     expect(fakeSocket.disconnect).toHaveBeenCalled();
     expect(fakeSocket.removeAllListeners).toHaveBeenCalled();
+  });
+
+  describe('chat and spectating (bonus)', () => {
+    it('collects the chat messages, newest last', async () => {
+      mount();
+      fakeSocket.fire('chatMessage', { username: 'Bob', text: 'gg', date: '1' });
+      fakeSocket.fire('chatMessage', { username: 'Eve', text: 'hi', date: '2' });
+
+      await waitFor(() => expect(screen.getByTestId('messages').textContent).toBe('2'));
+      expect(api.messages[1].text).toBe('hi');
+    });
+
+    it('caps the scrollback', async () => {
+      mount();
+      for (let index = 0; index < MAX_MESSAGES + 10; index += 1) {
+        fakeSocket.fire('chatMessage', { username: 'Bob', text: `m${index}`, date: String(index) });
+      }
+
+      await waitFor(() =>
+        expect(screen.getByTestId('messages').textContent).toBe(String(MAX_MESSAGES))
+      );
+      expect(api.messages[MAX_MESSAGES - 1].text).toBe(`m${MAX_MESSAGES + 9}`);
+    });
+
+    it('sends a chat message and swallows a refusal', async () => {
+      mount();
+      fakeSocket.emit.mockImplementation((event, payload, ack) =>
+        ack({ ok: false, message: 'Empty message.' })
+      );
+
+      await act(async () => {
+        await expect(api.sendChat('  ')).resolves.toBeNull();
+      });
+      expect(fakeSocket.emit).toHaveBeenCalledWith('chat', { text: '  ' }, expect.any(Function));
+    });
+
+    it('takes a spectator seat', async () => {
+      mount();
+      fakeSocket.emit.mockImplementation((event, payload, ack) =>
+        ack({ ok: true, spectating: true, host: 'someone' })
+      );
+
+      await act(async () => {
+        await expect(api.spectate('lobby', 'Eve')).resolves.toMatchObject({ spectating: true });
+      });
+      await waitFor(() => expect(screen.getByTestId('spectating').textContent).toBe('true'));
+    });
+
+    it('gives the seat up when entering the room as a player', async () => {
+      mount();
+      fakeSocket.emit.mockImplementation((event, payload, ack) => ack({ ok: true }));
+
+      await act(async () => {
+        await api.spectate('lobby', 'Eve');
+      });
+      await waitFor(() => expect(screen.getByTestId('spectating').textContent).toBe('true'));
+
+      await act(async () => {
+        await api.enterRoom('lobby', 'Eve');
+      });
+      await waitFor(() => expect(screen.getByTestId('spectating').textContent).toBe('false'));
+    });
+
+    it('reports a room closed under its audience', async () => {
+      mount();
+      fakeSocket.emit.mockImplementation((event, payload, ack) => ack({ ok: true }));
+
+      await act(async () => {
+        await api.spectate('lobby', 'Eve');
+      });
+      fakeSocket.fire('roomClosed', { name: 'lobby' });
+
+      await waitFor(() => expect(screen.getByTestId('closed').textContent).toBe('true'));
+      expect(screen.getByTestId('spectating').textContent).toBe('false');
+    });
+
+    it('carries the refusal reason on the rejected error', async () => {
+      mount();
+      fakeSocket.emit.mockImplementation((event, payload, ack) =>
+        ack({ ok: false, reason: 'running', message: 'A game is already running.' })
+      );
+
+      await act(async () => {
+        await expect(api.enterRoom('lobby', 'Eve')).rejects.toMatchObject({
+          reason: 'running',
+        });
+      });
+    });
+
+    it('drops the conversation when leaving the room', async () => {
+      mount();
+      fakeSocket.fire('chatMessage', { username: 'Bob', text: 'gg', date: '1' });
+      await waitFor(() => expect(screen.getByTestId('messages').textContent).toBe('1'));
+
+      act(() => api.leaveRoom('lobby'));
+
+      await waitFor(() => expect(screen.getByTestId('messages').textContent).toBe('0'));
+    });
   });
 });

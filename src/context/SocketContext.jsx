@@ -20,10 +20,15 @@ export const useSocket = () => useContext(SocketContext);
 
 export const REQUEST_TIMEOUT = 8000;
 
+/** Bonus (chat): how many messages are kept in the scrollback. */
+export const MAX_MESSAGES = 60;
+
 export const initialGame = () => ({
 	grid: createEmptyGrid(),
 	spectrum: [],
 	nextPiece: null,
+	heldPiece: null,
+	canHold: true,
 	score: 0,
 	level: 1,
 	lines: 0,
@@ -37,6 +42,7 @@ export const initialRoom = () => ({
 	mode: DEFAULT_MODE,
 	isRunning: false,
 	players: [],
+	spectators: [],
 });
 
 export const resolveSocketUrl = () => {
@@ -61,6 +67,10 @@ export const SocketProvider = ({ children }) => {
 	const [allPlayersDone, setAllPlayersDone] = useState(true);
 	const [rooms, setRooms] = useState([]);
 	const [leaderboard, setLeaderboard] = useState([]);
+	// Bonus: the in-room chat and the spectator seat.
+	const [messages, setMessages] = useState([]);
+	const [spectating, setSpectating] = useState(false);
+	const [roomClosed, setRoomClosed] = useState(false);
 	const socketRef = useRef(null);
 	const toast = useToast();
 
@@ -100,6 +110,16 @@ export const SocketProvider = ({ children }) => {
 
 		ws.on("Winner", (data) => setWinner(data));
 
+		ws.on("chatMessage", (message) =>
+			setMessages((current) => [...current, message].slice(-MAX_MESSAGES))
+		);
+
+		// The last player left: there is nothing to watch any more.
+		ws.on("roomClosed", () => {
+			setSpectating(false);
+			setRoomClosed(true);
+		});
+
 		setSocket(ws);
 
 		return () => {
@@ -134,8 +154,15 @@ export const SocketProvider = ({ children }) => {
 
 				ws.emit(event, payload, (response) => {
 					clearTimeout(timer);
-					if (response && response.ok) resolve(response);
-					else reject(new Error((response && response.message) || "Unexpected error."));
+					if (response && response.ok) {
+						resolve(response);
+						return;
+					}
+					const error = new Error((response && response.message) || "Unexpected error.");
+					// Machine readable refusal, so the caller can react to it
+					// (a running room offers to be watched, for instance).
+					if (response && response.reason) error.reason = response.reason;
+					reject(error);
 				});
 			}),
 		[]
@@ -148,8 +175,30 @@ export const SocketProvider = ({ children }) => {
 			setRoom((current) => ({ ...current, ...response }));
 			setSpectrums(new Map());
 			setWinner(null);
+			setSpectating(false);
+			setRoomClosed(false);
 			return response;
 		},
+		[request]
+	);
+
+	/** Bonus: take a seat in the audience of a round already in progress. */
+	const spectate = useCallback(
+		async (roomName, username) => {
+			const response = await request("spectate", { roomName, username });
+			setRoom((current) => ({ ...current, ...response }));
+			setSpectrums(new Map());
+			setWinner(null);
+			setSpectating(true);
+			setRoomClosed(false);
+			return response;
+		},
+		[request]
+	);
+
+	/** Bonus: says something in the room's chat. */
+	const sendChat = useCallback(
+		(text) => request("chat", { text }).catch(() => null),
 		[request]
 	);
 
@@ -160,6 +209,9 @@ export const SocketProvider = ({ children }) => {
 			setSpectrums(new Map());
 			setGame(initialGame());
 			setWinner(null);
+			setMessages([]);
+			setSpectating(false);
+			setRoomClosed(false);
 		},
 		[sendMessage]
 	);
@@ -202,10 +254,15 @@ export const SocketProvider = ({ children }) => {
 			winner,
 			allPlayersDone,
 			leaderboard,
+			messages,
+			spectating,
+			roomClosed,
 			sendMessage,
 			sendInput,
 			request,
 			enterRoom,
+			spectate,
+			sendChat,
 			leaveRoom,
 			startGame,
 			setMode,
@@ -221,10 +278,15 @@ export const SocketProvider = ({ children }) => {
 			winner,
 			allPlayersDone,
 			leaderboard,
+			messages,
+			spectating,
+			roomClosed,
 			sendMessage,
 			sendInput,
 			request,
 			enterRoom,
+			spectate,
+			sendChat,
 			leaveRoom,
 			startGame,
 			setMode,

@@ -72,7 +72,7 @@ export class Board {
     return !toppedOut;
   }
 
-  /** Height of each column — the only thing opponents get to see. */
+  /** Height of each column - the only thing opponents get to see. */
   spectrum() {
     return computeSpectrum(this.grid);
   }

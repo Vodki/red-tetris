@@ -130,7 +130,7 @@ export default function Home() {
 						{connected ? "Open rooms" : "Connecting to the server…"}
 					</h2>
 					{rooms.length === 0 ? (
-						<p className="lobby-empty">No room yet — create the first one.</p>
+						<p className="lobby-empty">No room yet - create the first one.</p>
 					) : (
 						<ul className="lobby-rooms-list">
 							{rooms.map((openRoom) => (
@@ -139,14 +139,15 @@ export default function Home() {
 									<span className="lobby-room-meta">
 										{openRoom.players} player{openRoom.players > 1 ? "s" : ""} ·{" "}
 										{GAME_MODE_LABELS[openRoom.mode] || openRoom.mode}
+										{openRoom.spectators > 0 ? ` · ${openRoom.spectators} watching` : ""}
 									</span>
+									{/* A running room cannot be joined, but it can be watched. */}
 									<Button
 										type="button"
 										variant="outline"
-										disabled={openRoom.isRunning}
 										onClick={() => goToRoom(openRoom.name)}
 									>
-										{openRoom.isRunning ? "In game" : "Join"}
+										{openRoom.isRunning ? "Watch" : "Join"}
 									</Button>
 								</li>
 							))}

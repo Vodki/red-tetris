@@ -16,7 +16,7 @@ import {
  * Server side model of a tetrimino.
  *
  * The subject asks the server to be object oriented with, at least, a `Piece`
- * class — while the actual board/piece maths lives in the pure modules this
+ * class - while the actual board/piece maths lives in the pure modules this
  * class only delegates to.
  */
 export class Piece {

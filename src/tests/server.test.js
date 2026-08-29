@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const prepare = vi.fn().mockResolvedValue(undefined);
@@ -10,13 +12,25 @@ vi.mock('next', () => ({
 
 describe('createServerInstance', () => {
   let instance;
+  let previousScoresFile;
 
   beforeEach(() => {
     process.env.NODE_TEST = 'true';
+    // The scoreboard defaults to `./.scores.json`. Playing a single game leaves
+    // that file behind, so pin it to a path that cannot exist: the test asserts
+    // on a *fresh* server, not on whatever was persisted on this machine.
+    previousScoresFile = process.env.SCORES_FILE;
+    process.env.SCORES_FILE = path.join(
+      tmpdir(),
+      `red-tetris-scores-${process.pid}-${Math.random().toString(36).slice(2)}.json`
+    );
     vi.resetModules();
   });
 
   afterEach(async () => {
+    if (previousScoresFile === undefined) delete process.env.SCORES_FILE;
+    else process.env.SCORES_FILE = previousScoresFile;
+
     if (instance) {
       instance.io.close();
       await new Promise((resolve) => instance.httpServer.close(resolve));

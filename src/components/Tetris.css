@@ -153,3 +153,29 @@
 	color: #4b5563;
 	font-variant-numeric: tabular-nums;
 }
+
+/* Bonus: hold slot next to the next-piece preview. */
+.tetris-previews {
+	display: flex;
+	flex-direction: row;
+	gap: 1rem;
+	justify-content: center;
+}
+
+/* Bonus: spectator mode. */
+.tetris-offer {
+	display: flex;
+	flex-direction: row;
+	gap: 0.6rem;
+	flex-wrap: wrap;
+	justify-content: center;
+}
+
+.tetris-watching {
+	font-size: 0.88rem;
+	color: #4b5563;
+}
+
+.tetris-room-spectators {
+	color: #b91c1c;
+}

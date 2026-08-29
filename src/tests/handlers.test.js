@@ -8,6 +8,7 @@ import {
   isValidRoomName,
   isValidUsername,
   registerHandlers,
+  sanitizeChatText,
 } from '../socket/handlers.js';
 
 describe('name validation', () => {
@@ -23,6 +24,22 @@ describe('name validation', () => {
     expect(isValidRoomName(42)).toBe(false);
     expect(isValidUsername('a'.repeat(31))).toBe(false);
     expect(isValidUsername(undefined)).toBe(false);
+  });
+});
+
+describe('chat sanitising (bonus)', () => {
+  it('collapses whitespace and trims', () => {
+    expect(sanitizeChatText('  hello   world \n')).toBe('hello world');
+  });
+
+  it('caps the length', () => {
+    expect(sanitizeChatText('a'.repeat(500))).toHaveLength(200);
+  });
+
+  it('drops anything that is not a usable string', () => {
+    expect(sanitizeChatText('   ')).toBe('');
+    expect(sanitizeChatText(42)).toBe('');
+    expect(sanitizeChatText(undefined)).toBe('');
   });
 });
 
@@ -294,7 +311,7 @@ describe('socket handlers', () => {
 
       const response = await ask(socket, 'listRooms');
       expect(response.rooms).toEqual([
-        { name: 'lobby', players: 1, mode: 'classic', isRunning: false },
+        { name: 'lobby', players: 1, spectators: 0, mode: 'classic', isRunning: false },
       ]);
     });
 
@@ -350,7 +367,7 @@ describe('socket handlers', () => {
 
     /**
      * Regression: the end of a round only ever reached the room itself, never
-     * the lobby listing — so a player who had left kept seeing the room as
+     * the lobby listing - so a player who had left kept seeing the room as
      * "in game" long after it was over.
      */
     it('tells the lobby the round is over, even after the host left', async () => {
@@ -377,6 +394,171 @@ describe('socket handlers', () => {
         listing.some((room) => room.name === 'lobby' && room.isRunning === false)
       );
       expect(state.rooms.get('lobby').isRunning).toBe(false);
+    });
+  });
+
+  describe('spectating (bonus)', () => {
+    /** Starts a round in `lobby` and returns the host's socket. */
+    const runningRoom = async () => {
+      const host = await connect();
+      await ask(host, 'enterRoom', { roomName: 'lobby', username: 'Alice' });
+      await ask(host, 'start', 'lobby');
+      return host;
+    };
+
+    it('lets a newcomer watch a round it is not allowed to join', async () => {
+      await runningRoom();
+      const guest = await connect();
+
+      const refused = await ask(guest, 'enterRoom', { roomName: 'lobby', username: 'Eve' });
+      expect(refused).toMatchObject({ ok: false, reason: 'running' });
+
+      const watching = await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+      expect(watching.ok).toBe(true);
+      expect(watching.spectating).toBe(true);
+      expect(watching.players).toHaveLength(1);
+      expect(watching.spectators).toEqual([{ socketId: guest.id, username: 'Eve' }]);
+    });
+
+    it('never turns a spectator into a player of the running round', async () => {
+      await runningRoom();
+      const guest = await connect();
+      await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+
+      const room = state.rooms.get('lobby');
+      expect(room.engines.size).toBe(1);
+      expect(state.engines.has(guest.id)).toBe(false);
+      expect(room.spectators.size).toBe(1);
+    });
+
+    it('receives the spectrums of the players it watches', async () => {
+      const host = await runningRoom();
+      const guest = await connect();
+      await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+
+      const update = waitFor(guest, 'SpectrumUpdate');
+      host.emit('gameInput', 'HardDrop');
+
+      expect((await update).socketId).toBe(host.id);
+    });
+
+    it('reports the audience to the lobby listing', async () => {
+      await runningRoom();
+      const guest = await connect();
+      await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+
+      const listing = await ask(guest, 'listRooms');
+      expect(listing.rooms[0]).toMatchObject({ players: 1, spectators: 1 });
+    });
+
+    it('seats a spectator at the table for the next round', async () => {
+      const host = await runningRoom();
+      const guest = await connect();
+      await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+
+      host.disconnect();
+      await until(() => state.rooms.get('lobby') === undefined);
+
+      // The room closed with its last player, so Eve creates a fresh one.
+      const entered = await ask(guest, 'enterRoom', { roomName: 'lobby', username: 'Eve' });
+      expect(entered.ok).toBe(true);
+      expect(state.spectators.has(guest.id)).toBe(false);
+      expect(state.rooms.get('lobby').spectators.size).toBe(0);
+    });
+
+    it('tells the audience when the room closes under it', async () => {
+      const host = await runningRoom();
+      const guest = await connect();
+      await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+
+      const closed = waitFor(guest, 'roomClosed');
+      host.disconnect();
+
+      expect(await closed).toEqual({ name: 'lobby' });
+      await until(() => state.spectators.size === 0);
+    });
+
+    it('gives up the seat on leaveRoom and on disconnect', async () => {
+      await runningRoom();
+      const guest = await connect();
+      await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+
+      expect(await ask(guest, 'leaveRoom', 'lobby')).toEqual({ ok: true });
+      expect(state.spectators.size).toBe(0);
+
+      await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+      guest.disconnect();
+      await until(() => state.spectators.size === 0);
+    });
+
+    it('refuses an unknown room and invalid names', async () => {
+      const guest = await connect();
+
+      expect(await ask(guest, 'spectate', { roomName: 'nope', username: 'Eve' })).toMatchObject({
+        ok: false,
+      });
+      expect(await ask(guest, 'spectate', { roomName: 'bad name', username: 'Eve' })).toMatchObject({
+        ok: false,
+      });
+      expect(await ask(guest, 'spectate', { roomName: 'lobby' })).toMatchObject({ ok: false });
+    });
+
+    it('is idempotent when already watching that room', async () => {
+      await runningRoom();
+      const guest = await connect();
+      await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+
+      const again = await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+      expect(again.ok).toBe(true);
+      expect(state.rooms.get('lobby').spectators.size).toBe(1);
+    });
+  });
+
+  describe('chat (bonus)', () => {
+    it('relays a message to everybody in the room', async () => {
+      const alice = await connect();
+      const bob = await connect();
+      await ask(alice, 'enterRoom', { roomName: 'lobby', username: 'Alice' });
+      await ask(bob, 'enterRoom', { roomName: 'lobby', username: 'Bob' });
+
+      const received = waitFor(bob, 'chatMessage');
+      expect(await ask(alice, 'chat', { text: '  well   played  ' })).toMatchObject({ ok: true });
+
+      const message = await received;
+      expect(message).toMatchObject({
+        socketId: alice.id,
+        username: 'Alice',
+        text: 'well played',
+        spectator: false,
+      });
+      expect(typeof message.date).toBe('string');
+    });
+
+    it('lets a spectator talk, flagged as such', async () => {
+      const host = await connect();
+      await ask(host, 'enterRoom', { roomName: 'lobby', username: 'Alice' });
+      await ask(host, 'start', 'lobby');
+
+      const guest = await connect();
+      await ask(guest, 'spectate', { roomName: 'lobby', username: 'Eve' });
+
+      const received = waitFor(host, 'chatMessage');
+      await ask(guest, 'chat', { text: 'nice one' });
+
+      expect(await received).toMatchObject({ username: 'Eve', spectator: true });
+    });
+
+    it('refuses an empty message', async () => {
+      const alice = await connect();
+      await ask(alice, 'enterRoom', { roomName: 'lobby', username: 'Alice' });
+
+      expect(await ask(alice, 'chat', { text: '   ' })).toMatchObject({ ok: false });
+      expect(await ask(alice, 'chat', {})).toMatchObject({ ok: false });
+    });
+
+    it('refuses to relay anything from outside a room', async () => {
+      const stranger = await connect();
+      expect(await ask(stranger, 'chat', { text: 'hello?' })).toMatchObject({ ok: false });
     });
   });
 });

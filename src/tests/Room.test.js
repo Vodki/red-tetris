@@ -251,6 +251,72 @@ describe('Game', () => {
   });
 });
 
+describe('spectators and chat (bonus)', () => {
+  let io;
+  let game;
+
+  beforeEach(() => {
+    io = makeIo();
+    game = new Game('lobby', 'h', io);
+  });
+
+  it('keeps the audience out of the roster and of the end-of-game maths', () => {
+    game.addPlayer(makeEngine('p1'));
+    game.addSpectator('watcher', 'Eve');
+
+    expect(game.size).toBe(1);
+    expect(game.spectators.size).toBe(1);
+    expect(game.playersStillPlaying()).toBe(0);
+    expect(game.serializePlayers().spectators).toEqual([
+      { socketId: 'watcher', username: 'Eve' },
+    ]);
+  });
+
+  it('gives up a seat only once', () => {
+    game.addSpectator('watcher', 'Eve');
+
+    expect(game.removeSpectator('watcher')).toBe(true);
+    expect(game.removeSpectator('watcher')).toBe(false);
+  });
+
+  it('closes the room and sends the audience home with the last player', () => {
+    const engine = makeEngine('p1');
+    game.onEmpty = vi.fn();
+    game.addPlayer(engine);
+    game.addSpectator('watcher', 'Eve');
+
+    game.removePlayer(engine);
+
+    expect(io.roomEmit).toHaveBeenCalledWith('roomClosed', { name: 'lobby' });
+    expect(game.spectators.size).toBe(0);
+    expect(game.onEmpty).toHaveBeenCalledWith(game);
+  });
+
+  it('does not announce a closure when nobody was watching', () => {
+    const engine = makeEngine('p1');
+    game.addPlayer(engine);
+
+    game.removePlayer(engine);
+
+    expect(io.roomEmit).not.toHaveBeenCalledWith('roomClosed', expect.anything());
+  });
+
+  it('relays a chat message to everybody in the room', () => {
+    const message = { username: 'Eve', text: 'gg' };
+
+    expect(game.broadcastChat(message)).toBe(message);
+    expect(io.to).toHaveBeenCalledWith('lobby');
+    expect(io.roomEmit).toHaveBeenCalledWith('chatMessage', message);
+  });
+
+  it('counts the audience in the lobby listing', () => {
+    game.addPlayer(makeEngine('p1'));
+    game.addSpectator('watcher', 'Eve');
+
+    expect(listOpenRooms(new Map([['lobby', game]]))[0].spectators).toBe(1);
+  });
+});
+
 describe('roomExists / listOpenRooms', () => {
   it('answers from the server room registry', () => {
     const rooms = new Map([['lobby', new Game('lobby', 'h', makeIo())]]);
@@ -265,7 +331,7 @@ describe('roomExists / listOpenRooms', () => {
     game.addPlayer(makeEngine('h'));
 
     expect(listOpenRooms(new Map([['lobby', game]]))).toEqual([
-      { name: 'lobby', players: 1, mode: 'classic', isRunning: false },
+      { name: 'lobby', players: 1, spectators: 0, mode: 'classic', isRunning: false },
     ]);
   });
 });

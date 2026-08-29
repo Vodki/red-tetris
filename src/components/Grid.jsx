@@ -3,7 +3,7 @@ import "./Grid.css";
 
 /**
  * The player's own field. Pure presentation: it renders exactly the grid the
- * server sent. Flexbox rows and cells — no <table>, no canvas, no SVG.
+ * server sent. Flexbox rows and cells - no <table>, no canvas, no SVG.
  */
 const Grid = React.memo(({ grid = [] }) => (
 	<div className="grid" aria-label="playing field">

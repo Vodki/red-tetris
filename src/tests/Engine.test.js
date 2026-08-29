@@ -3,6 +3,7 @@ import { Player } from '../game/Engine.js';
 import { Piece } from '../game/Tetromino.js';
 import { GRAVITY, INVISIBLE } from '../game/pure/rules.js';
 import { GHOST, ghostBlocks } from '../game/pure/board.js';
+import { spawnOf } from '../game/pure/pieces.js';
 
 const makeSocket = (id = 'socket-1') => ({
   id,
@@ -367,6 +368,121 @@ describe('Player', () => {
     it('does not broadcast a spectrum without a room', () => {
       player.room = null;
       expect(() => player.sendSpectrum()).not.toThrow();
+    });
+  });
+
+  describe('hold (bonus)', () => {
+    let holder;
+
+    /** A sequence of distinct pieces, so a swap is actually observable. */
+    const makeHolder = (ids = ['I', 'T', 'L', 'O']) => {
+      const holderSocket = makeSocket('holder');
+      const engine = new Player(holderSocket, true, ids.map((id) => new Piece(id)));
+      engine.username = 'holder';
+      engine.room = room;
+      room.engines.set(engine.socketId, engine);
+      return engine;
+    };
+
+    beforeEach(() => {
+      holder = makeHolder();
+      holder.start();
+    });
+
+    afterEach(() => holder.stop());
+
+    it('puts the falling piece aside and deals the next one of the sequence', () => {
+      expect(holder.current.id).toBe('I');
+
+      expect(holder.holdCurrent()).toBe(true);
+      expect(holder.held.id).toBe('I');
+      expect(holder.current.id).toBe('T');
+    });
+
+    it('can only be used once per piece', () => {
+      holder.holdCurrent();
+
+      expect(holder.holdCurrent()).toBe(false);
+      expect(holder.current.id).toBe('T');
+      expect(holder.held.id).toBe('I');
+    });
+
+    it('is re-armed by every new piece', () => {
+      holder.holdCurrent();
+      holder.spawnNewTetromino();
+
+      expect(holder.holdUsed).toBe(false);
+      expect(holder.holdCurrent()).toBe(true);
+      expect(holder.current.id).toBe('I');
+      expect(holder.held.id).toBe('L');
+    });
+
+    it('brings the held piece back at its spawn position and rotation', () => {
+      holder.current.rotate();
+      holder.current.moveBy(-2, 6);
+      holder.holdCurrent();
+      holder.spawnNewTetromino();
+      holder.holdCurrent();
+
+      expect(holder.current.id).toBe('I');
+      expect(holder.current.rotationIndex).toBe(0);
+      expect(holder.current.position).toEqual(spawnOf('I'));
+    });
+
+    it('is ignored outside of a running round', () => {
+      holder.stop();
+      expect(holder.holdCurrent()).toBe(false);
+
+      holder.isRunning = true;
+      holder.gameOver = true;
+      expect(holder.holdCurrent()).toBe(false);
+    });
+
+    it('ends the game when the piece coming back can no longer enter', () => {
+      holder.holdCurrent();
+      holder.spawnNewTetromino();
+      holder.board.grid = holder.board
+        .gridCopy()
+        .map((row, y) => (y < 3 ? row.map(() => 1) : row));
+
+      expect(holder.holdCurrent()).toBe(false);
+      expect(holder.gameOver).toBe(true);
+      expect(room.onPlayerFinished).toHaveBeenCalledWith(holder);
+    });
+
+    it('is driven by the Hold game input', () => {
+      const holderSocket = makeSocket('input-holder');
+      const engine = new Player(holderSocket, true, [new Piece('I'), new Piece('T')]);
+      engine.room = room;
+      engine.start();
+
+      holderSocket.fire('gameInput', 'Hold');
+
+      expect(engine.held.id).toBe('I');
+      expect(engine.current.id).toBe('T');
+      engine.stop();
+    });
+
+    it('reports the hold slot to the client', () => {
+      holder.sendGameState();
+      const calls = holder.socket.emit.mock.calls;
+      const first = calls[calls.length - 1][1];
+      expect(first.heldPiece).toBeNull();
+      expect(first.canHold).toBe(true);
+
+      holder.holdCurrent();
+      const after = holder.socket.emit.mock.calls;
+      const payload = after[after.length - 1][1];
+      expect(payload.heldPiece.id).toBe('I');
+      expect(payload.canHold).toBe(false);
+    });
+
+    it('starts every round with an empty hold slot', () => {
+      holder.holdCurrent();
+      holder.reset();
+
+      expect(holder.held).toBeNull();
+      expect(holder.holdUsed).toBe(false);
     });
   });
 
